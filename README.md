@@ -1,6 +1,6 @@
-# EEG predictive modeling summerschool
-Age prediction benchmark project
+# M/EEG brain age prediction benchmark project
 
+Age prediction benchmark project
 
 ## Notebooks
 

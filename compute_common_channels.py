@@ -1,5 +1,3 @@
-from joblib import Parallel, delayed
-
 import pandas as pd
 
 import mne
@@ -29,4 +27,4 @@ chan_template = eeg_template_montage.ch_names
 common_channels = set(chan_template).intersection(*channels)
 
 df_common_names = pd.DataFrame({"name": sorted(common_channels)})
-df_common_names.to_csv('./outputs/common_channels.csv')
+df_common_names.to_csv('./common_channels.csv')

@@ -1,0 +1,94 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+import mne
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import RidgeCV
+from sklearn.model_selection import cross_val_score
+# from sklearn.model_selection import cross_val_predict
+from sklearn.preprocessing import StandardScaler
+from sklearn.dummy import DummyRegressor
+from sklearn.pipeline import make_pipeline
+from sklearn.model_selection import KFold
+
+import coffeine
+
+from config_chbp_eeg import bids_root, deriv_root
+
+subjects_df = pd.read_csv(bids_root / "participants.tsv", sep='\t')
+
+# %% get age
+df_demographics = pd.read_csv(
+    bids_root / '..' / '..' / 'CHBMP_Cognitive_Scales' /
+    'Demographic_data.csv', header=1
+)
+
+df_demographics = df_demographics.iloc[:, :5].set_index('Code')
+df_demographics.index = "sub-" + df_demographics.index
+df_demographics.index
+
+# now we read in the processing log to see for which participants we have EEG
+proc_log = pd.read_csv(deriv_root / 'autoreject_log.csv')
+good_subjects = proc_log.query('ok == "OK"').subject
+good_subjects
+
+# %% Restrict to good subjects
+df_demographics = df_demographics.loc[good_subjects]
+
+features = mne.externals.h5io.read_hdf5(deriv_root / 'features_eyes-closed.h5')
+covs = [features[sub]['covs'] for sub in df_demographics.index]
+X_covs = np.array(covs)
+print(X_covs.shape)
+
+frequency_bands = {
+    "theta": (4.0, 8.0),
+    "alpha": (8.0, 15.0),
+    "beta_low": (15.0, 26.0),
+    "beta_high": (26.0, 35.0),
+}
+
+# %% Get X and y
+X_df = pd.DataFrame(
+  {band: list(X_covs[:, ii]) for ii, band in enumerate(frequency_bands)})
+
+y = df_demographics.Age.values
+
+# %% Create models
+filter_bank_transformer = coffeine.make_filter_bank_transformer(
+    names=['theta', 'alpha', 'beta_low', 'beta_high'], method='riemann',
+    projection_params=dict(n_compo=40, scale='auto'))
+
+filter_bank_model = make_pipeline(filter_bank_transformer, StandardScaler(),
+                                  RidgeCV(alphas=np.logspace(-3, 10, 100)))
+
+dummy_model = DummyRegressor(strategy="median")
+
+models = {
+    "filter_bank_model": filter_bank_model,
+    "dummy_model": dummy_model
+}
+
+# %% Run CV
+cv = KFold(n_splits=5, shuffle=True, random_state=42)
+
+results = {}
+for name, model in models.items():
+    scores = -cross_val_score(
+        model, X_df, y, cv=cv, scoring='neg_mean_absolute_error'
+    )
+    results[name] = scores
+    print(f'MAE({name}) = {scores.mean()}')
+
+results = pd.DataFrame(results)
+results = results.melt(var_name='model', value_name='MAE')
+
+# %% Plot some results
+sns.barplot(x='model', y='MAE', data=results)
+plt.savefig('results.pdf')
+plt.show()
+
+# y_pred = cross_val_predict(estimator=filter_bank_model, X=X_df, y=y)
+# plt.scatter(y, y_pred)
+# plt.show()

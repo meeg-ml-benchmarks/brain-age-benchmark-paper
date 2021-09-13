@@ -1,16 +1,10 @@
-from config_chbp_eeg import bids_root, deriv_root, N_JOBS
 import pandas as pd
 from joblib import Parallel, delayed
 
 import mne
 import coffeine
 
-from config_chbp_eeg import bids_root
-
-subjects_list = list(bids_root.glob('*'))
-
-
-subjects_list = list(bids_root.glob('*'))
+from config_chbp_eeg import bids_root, deriv_root, N_JOBS
 
 subjects_df = pd.read_csv(bids_root / "participants.tsv", sep='\t')
 
@@ -54,9 +48,12 @@ for condition in ('closed', 'open'):
            if not isinstance(ff, str)}
 
     mne.externals.h5io.write_hdf5(
-        f'./outputs/features_eyes-{condition}.h5', out, overwrite=True)
+        deriv_root / f'features_eyes-{condition}.h5',
+        out,
+        overwrite=True
+    )
 
     logging = ['OK' if not isinstance(ff, str) else ff for sub, ff in
                zip(subjects, features)]
     out_log = pd.DataFrame({"ok": logging, "subject": subjects})
-    out_log.to_csv(f'./outputs/feature_eyes-{condition}-log.csv')
+    out_log.to_csv(deriv_root / f'feature_eyes-{condition}-log.csv')

@@ -5,7 +5,7 @@ import pandas as pd
 import mne
 import autoreject
 
-from config_chbp_eeg import bids_root, deriv_root, N_JOBS
+from config_chbp_eeg import bids_root, deriv_root, N_JOBS, analyze_channels
 
 subjects_list = list(bids_root.glob('*'))
 
@@ -14,7 +14,7 @@ subjects_df = pd.read_csv(bids_root / "participants.tsv", sep='\t')
 subjects = [sub for sub in subjects_df.participant_id if
             (deriv_root / sub / 'eeg').exists()]
 
-df_common_names = pd.read_csv('./outputs/common_channels.csv')
+# df_common_names = pd.read_csv('./outputs/common_channels.csv')
 
 
 def run_subject(subject):
@@ -28,8 +28,9 @@ def run_subject(subject):
                    ('eyes/closed', 'eyes/open'))
     if not has_eyes:
         return 'no event'
-    epochs = epochs['eyes']
-    epochs.pick_channels(df_common_names.name.values)
+    # epochs = epochs['eyes']
+    # epochs.pick_channels(df_common_names.name.values)
+    epochs.pick_channels(analyze_channels)
 
     if True:
         ar = autoreject.AutoReject(n_jobs=1, cv=5)
@@ -49,8 +50,9 @@ def run_subject(subject):
     epochs.save(out_fname, overwrite=True)
     return ok
 
+
 logging = Parallel(n_jobs=N_JOBS)(
   delayed(run_subject)(sub) for sub in subjects)
 
 out_log = pd.DataFrame({"ok": logging, "subject": subjects})
-out_log.to_csv('./outputs/autoreject_log.csv')
+out_log.to_csv(deriv_root / 'autoreject_log.csv')

@@ -1,3 +1,4 @@
+# %% imports
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -60,8 +61,7 @@ y = df_demographics.Age.values
 
 # %% Create models
 filter_bank_transformer = coffeine.make_filter_bank_transformer(
-    names=list(frequency_bands), method='riemann',
-    projection_params=dict(n_compo=len(analyze_channels) - 1, scale='auto'))
+    names=list(frequency_bands), method='riemann_wasserstein')
 
 filter_bank_model = make_pipeline(filter_bank_transformer, StandardScaler(),
                                   RidgeCV(alphas=np.logspace(-3, 10, 100)))
@@ -76,22 +76,33 @@ models = {
 # %% Run CV
 cv = KFold(n_splits=5, shuffle=True, random_state=42)
 
-results = {}
-for name, model in models.items():
-    scores = -cross_val_score(
-        model, X_df, y, cv=cv, scoring='neg_mean_absolute_error'
-    )
-    results[name] = scores
-    print(f'MAE({name}) = {scores.mean()}')
+results = list()
+for metric in ('neg_mean_absolute_error', 'r2'):
+    for name, model in models.items():
+        scores = cross_val_score(
+            model, X_df, y, cv=cv, scoring=metric
+        )
+        score_key = metric
+        if metric == 'neg_mean_absolute_error':
+            score_key = "MAE"
+            scores *= -1
 
-results = pd.DataFrame(results)
-results = results.melt(var_name='model', value_name='MAE')
+        this_result = {"metric": score_key,
+                       "score": scores,
+                       "model": name}
+
+        print(f'{score_key}({name}) = {scores.mean()}')
+        results.append(pd.DataFrame(this_result))
+
+results = pd.concat(results)
 
 # %% Plot some results
-sns.barplot(x='model', y='MAE', data=results)
+sns.barplot(x='score', y='metric', hue='model', data=results.query("metric == 'MAE'"))
 plt.savefig('results_mae.pdf')
 plt.show()
 
 # y_pred = cross_val_predict(estimator=filter_bank_model, X=X_df, y=y)
 # plt.scatter(y, y_pred)
 # plt.show()
+
+# %%

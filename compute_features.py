@@ -29,8 +29,6 @@ def run_subject(subject, condition):
         return 'no file'
 
     epochs = mne.read_epochs(fname, proj=False)
-    if condition not in epochs.event_id:
-        return 'no condition'
 
     features = coffeine.compute_features(
         epochs[condition],
@@ -42,16 +40,20 @@ def run_subject(subject, condition):
     return out
 
 
-for condition in ('closed', 'open'):
+for condition in ('eyes/closed', 'eyes/open', 'eyes'):
     features = Parallel(n_jobs=N_JOBS)(
-        delayed(run_subject)(sub, condition=f'eyes/{condition}')
+        delayed(run_subject)(sub, condition=condition)
         for sub in subjects)
 
     out = {sub: ff for sub, ff in zip(subjects, features)
            if not isinstance(ff, str)}
 
+    label = 'pooled'
+    if '/' in condition:
+        _, label = condition.split("/")
+
     mne.externals.h5io.write_hdf5(
-        deriv_root / f'features_eyes-{condition}.h5',
+        deriv_root / f'features_eyes-{label}.h5',
         out,
         overwrite=True
     )
@@ -59,4 +61,4 @@ for condition in ('closed', 'open'):
     logging = ['OK' if not isinstance(ff, str) else ff for sub, ff in
                zip(subjects, features)]
     out_log = pd.DataFrame({"ok": logging, "subject": subjects})
-    out_log.to_csv(deriv_root / f'feature_eyes-{condition}-log.csv')
+    out_log.to_csv(deriv_root / f'feature_eyes-{label}-log.csv')

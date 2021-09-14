@@ -38,7 +38,8 @@ good_subjects
 # %% Restrict to good subjects
 df_demographics = df_demographics.loc[good_subjects]
 
-features = mne.externals.h5io.read_hdf5(deriv_root / 'features_eyes-closed.h5')
+kind = "eyes-pooled"
+features = mne.externals.h5io.read_hdf5(deriv_root / f'features_{kind}.h5')
 covs = [features[sub]['covs'] for sub in df_demographics.index]
 X_covs = np.array(covs)
 print(X_covs.shape)
@@ -60,11 +61,14 @@ X_df = pd.DataFrame(
 y = df_demographics.Age.values
 
 # %% Create models
+
 filter_bank_transformer = coffeine.make_filter_bank_transformer(
-    names=list(frequency_bands), method='riemann_wasserstein')
+    names=list(frequency_bands),
+    method='riemann'
+)
 
 filter_bank_model = make_pipeline(filter_bank_transformer, StandardScaler(),
-                                  RidgeCV(alphas=np.logspace(-3, 10, 100)))
+                                  RidgeCV(alphas=np.logspace(-5, 10, 100)))
 
 dummy_model = DummyRegressor(strategy="median")
 
@@ -74,7 +78,7 @@ models = {
 }
 
 # %% Run CV
-cv = KFold(n_splits=5, shuffle=True, random_state=42)
+cv = KFold(n_splits=10, shuffle=True, random_state=42)
 
 results = list()
 for metric in ('neg_mean_absolute_error', 'r2'):
@@ -97,12 +101,7 @@ for metric in ('neg_mean_absolute_error', 'r2'):
 results = pd.concat(results)
 
 # %% Plot some results
-sns.barplot(x='score', y='metric', hue='model', data=results.query("metric == 'MAE'"))
+sns.barplot(x='score', y='metric', hue='model',
+            data=results.query("metric == 'MAE'"))
 plt.savefig('results_mae.pdf')
 plt.show()
-
-# y_pred = cross_val_predict(estimator=filter_bank_model, X=X_df, y=y)
-# plt.scatter(y, y_pred)
-# plt.show()
-
-# %%

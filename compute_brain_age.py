@@ -15,7 +15,7 @@ from sklearn.model_selection import KFold
 
 import coffeine
 
-from config_chbp_eeg import bids_root, deriv_root
+from config_chbp_eeg import bids_root, deriv_root, analyze_channels
 
 subjects_df = pd.read_csv(bids_root / "participants.tsv", sep='\t')
 
@@ -43,10 +43,13 @@ X_covs = np.array(covs)
 print(X_covs.shape)
 
 frequency_bands = {
+    "low": (0.1, 1),
+    "delta": (1, 4),
     "theta": (4.0, 8.0),
     "alpha": (8.0, 15.0),
     "beta_low": (15.0, 26.0),
-    "beta_high": (26.0, 35.0),
+    "beta_mid": (26.0, 35.0),
+    "beta_high": (35.0, 49)
 }
 
 # %% Get X and y
@@ -57,8 +60,8 @@ y = df_demographics.Age.values
 
 # %% Create models
 filter_bank_transformer = coffeine.make_filter_bank_transformer(
-    names=['theta', 'alpha', 'beta_low', 'beta_high'], method='riemann',
-    projection_params=dict(n_compo=40, scale='auto'))
+    names=list(frequency_bands), method='riemann',
+    projection_params=dict(n_compo=len(analyze_channels) - 1, scale='auto'))
 
 filter_bank_model = make_pipeline(filter_bank_transformer, StandardScaler(),
                                   RidgeCV(alphas=np.logspace(-3, 10, 100)))
@@ -86,7 +89,7 @@ results = results.melt(var_name='model', value_name='MAE')
 
 # %% Plot some results
 sns.barplot(x='model', y='MAE', data=results)
-plt.savefig('results.pdf')
+plt.savefig('results_mae.pdf')
 plt.show()
 
 # y_pred = cross_val_predict(estimator=filter_bank_model, X=X_df, y=y)

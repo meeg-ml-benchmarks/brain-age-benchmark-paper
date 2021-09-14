@@ -12,10 +12,13 @@ subjects = [sub for sub in subjects_df.participant_id if
             (deriv_root / sub / 'eeg').exists()]
 
 frequency_bands = {
+    "low": (0.1, 1),
+    "delta": (1, 4),
     "theta": (4.0, 8.0),
     "alpha": (8.0, 15.0),
     "beta_low": (15.0, 26.0),
-    "beta_high": (26.0, 35.0),
+    "beta_mid": (26.0, 35.0),
+    "beta_high": (35.0, 49)
 }
 
 

@@ -33,11 +33,15 @@ h_freq = 49
 
 eeg_reference = []
 
-eog_channels = ["EOI", "EOD"]
+eog_channels = ["Fp1"]
 
 find_breaks = False
 
-spatial_filter = None
+spatial_filter = 'ssp'
+
+n_proj_eog = 1
+
+ssp_reject_eog = "autoreject_global"
 
 reject = None
 

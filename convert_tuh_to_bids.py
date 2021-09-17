@@ -50,7 +50,8 @@ def rename_tuh_channels(ch_name):
     return out
 
 
-def _convert_tuh_recording_to_bids(ds, bids_save_dir, desc=None):
+def _convert_tuh_recording_to_bids(ds, bids_save_dir, desc=None,
+                                   write_split_nb=False):
     """Convert single TUH recording to BIDS.
 
     Parameters
@@ -62,6 +63,9 @@ def _convert_tuh_recording_to_bids(ds, bids_save_dir, desc=None):
     desc : None | pd.Series
         Description of the recording, containing subject and recording
         information. If None, use `ds.description`.
+    write_split_nb : bool
+        If True, write split number, i.e. TUH's token number, in the BIDS data.
+        If False, set the `split` field to None.
     """
     raw = ds.raw
     raw.pick_types(eeg=True)  # Only keep EEG channels
@@ -117,9 +121,10 @@ def _convert_tuh_recording_to_bids(ds, bids_save_dir, desc=None):
     raw.info['line_freq'] = 60  # Data was collected in North America
     raw.info['subject_info'] = subject_info
     task = 'abnormal' if desc['pathological'] else 'normal'
+    split_nb = desc['segment'] if write_split_nb else None
 
     bids_path = BIDSPath(
-        subject=mrn, session=session_nb, task=task, split=desc['segment'],
+        subject=mrn, session=session_nb, task=task, split=split_nb,
         root=bids_save_dir, datatype='eeg', check=True)
 
     write_raw_bids(raw, bids_path, overwrite=True)
@@ -169,7 +174,8 @@ def convert_tuab_to_bids(tuh_data_dir, bids_save_dir, healthy_only=True,
 
     for ds, (_, desc) in zip(concat_ds.datasets, description.iterrows()):
         assert ds.description['path'] == desc['path']
-        _convert_tuh_recording_to_bids(ds, bids_save_dir, desc=desc)
+        _convert_tuh_recording_to_bids(
+            ds, bids_save_dir, desc=desc, write_split_nb=False)
 
 
 if __name__ == '__main__':

@@ -5,7 +5,11 @@ Labels" document on TUH EEG's website for more info on the dataset conventions:
 https://www.isip.piconepress.com/publications/reports/2020/tuh_eeg/electrodes/
 
 E.g., to run on drago:
->>> python tuh_bids.py --tuab_data_dir /storage/store/data/tuh_eeg/www.isip.piconepress.com/projects/tuh_eeg/downloads/tuh_eeg_abnormal/v2.0.0/edf --bids_data_dir /storage/store2/derivatives/TUAB-healthy-bids --healthy_only True --reset_session_indices True
+>>> python convert_tuh_to_bids.py \
+    --tuab_data_dir /storage/store/data/tuh_eeg/www.isip.piconepress.com/projects/tuh_eeg/downloads/tuh_eeg_abnormal/v2.0.0/edf \
+    --bids_data_dir /storage/store2/data/TUAB-healthy-bids \
+    --healthy_only True \
+    --reset_session_indices True
 """
 
 import re
@@ -57,12 +61,12 @@ def _convert_tuh_recording_to_bids(ds, bids_save_dir, desc=None):
         Directory where to save the BIDS version of the dataset.
     desc : None | pd.Series
         Description of the recording, containing subject and recording
-        information. If None, use `ds.raw.description`.
+        information. If None, use `ds.description`.
     """
     raw = ds.raw
     raw.pick_types(eeg=True)  # Only keep EEG channels
     if desc is None:
-        desc = raw.description
+        desc = ds.description
 
     # Extract reference
     # XXX Not supported yet in mne-bids: see mne-bids/mne_bids/write.py::766
@@ -112,16 +116,18 @@ def _convert_tuh_recording_to_bids(ds, bids_save_dir, desc=None):
     }
     raw.info['line_freq'] = 60  # Data was collected in North America
     raw.info['subject_info'] = subject_info
+    task = 'abnormal' if desc['pathological'] else 'normal'
 
     bids_path = BIDSPath(
-        subject=mrn, session=session_nb, task='', split=desc['segment'],
+        subject=mrn, session=session_nb, task=task, split=desc['segment'],
         root=bids_save_dir, datatype='eeg', check=True)
 
     write_raw_bids(raw, bids_path, overwrite=True)
 
 
 def convert_tuab_to_bids(tuh_data_dir, bids_save_dir, healthy_only=True,
-                         reset_session_indices=True, n_jobs=1):
+                         reset_session_indices=True, concat_split_files=True,
+                         n_jobs=1):
     """Convert TUAB dataset to BIDS format.
 
     Parameters
@@ -136,6 +142,9 @@ def convert_tuab_to_bids(tuh_data_dir, bids_save_dir, healthy_only=True,
     reset_session_indices : bool
         If True, reset session indices so that each subject has a session 001,
         and that there is no gap between session numbers for a subject.
+    concat_split_files : bool
+        If True, concatenate recordings that were split into a single file.
+        This is based on the "token" field of the original TUH file paths.
     n_jobs : None | int
         Number of jobs for parallelization.
     """
@@ -143,9 +152,17 @@ def convert_tuab_to_bids(tuh_data_dir, bids_save_dir, healthy_only=True,
 
     if healthy_only:
         concat_ds = concat_ds.split(by='pathological')['False']
-
     description = concat_ds.description  # Make a copy because `description` is
     # made on-the-fly
+    if concat_split_files:
+        n_segments_per_session = description.groupby(
+            ['subject', 'session'])['segment'].apply(list).apply(len)
+        if n_segments_per_session.unique() != np.array([1]):
+            raise NotImplementedError(
+                'Concatenation of split files is not implemented yet.')
+        else:
+            description['segment'] = '001'
+
     if reset_session_indices:
         description['session'] = description.groupby(
             'subject')['session'].transform(lambda x: np.arange(len(x)) + 1)

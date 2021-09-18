@@ -1,16 +1,22 @@
 import pathlib
-import mne
 
 study_name = "age-prediction-benchmark"
 
 bids_root = pathlib.Path(
-    "/storage/store2/data/TUAB-healthy-bids-nosplit")
+    "/storage/store2/data/TUAB-healthy-bids2"
+    # "/storage/store2/data/TUAB-healthy-bids-nosplit"
+)
 
 deriv_root = pathlib.Path(
-    "/storage/store3/derivatives/TUAB-healthy-bids-nosplit")
+    "/storage/store3/derivatives/TUAB-healthy-bids2")
 # "/storage/store2/derivatives/eeg-pred-modeling-summer-school/")
 
+# subjects = ['00002355']
+
 task = "rest"
+# task = "normal"
+
+conditions = []
 
 sessions = ["001"]
 
@@ -31,10 +37,13 @@ reject = None
 on_error = "abort"
 on_rename_missing_events = "warn"
 
+# N_JOBS = 1
 N_JOBS = 30
 
 epochs_tmin = 0
 epochs_tmax = 10
+rest_epochs_duration = 10.
+rest_epochs_overlap = 0.
 baseline = None
 
 event_repeated = "drop"
@@ -53,3 +62,4 @@ mne_log_level = "info"
 # on_error = "continue"
 
 on_error = 'abort'
+# on_error = 'debug'

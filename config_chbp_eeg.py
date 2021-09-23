@@ -11,12 +11,10 @@ deriv_root = pathlib.Path("/storage/store3/derivatives/CHBMP_EEG_and_MRI/")
 
 task = "protmap"
 
-# subjects = ['CBM00001']  # XXX: to speed up testing
-
+sessions = []  # keep empty for code flow
 datatype = "eeg"
 ch_types = ["eeg"]
 
-# XXX ignored for now
 analyze_channels = [
     "AF3", "AF4", "C1", "C2", "C3", "C4", "C5", "C6", "CP1", "CP2", "CP3",
     "CP4", "CP5", "CP6", "Cz", "F1", "F2", "F3", "F4", "F5", "F6", "F7",

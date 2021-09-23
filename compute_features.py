@@ -1,15 +1,46 @@
+import argparse
+import importlib
+
 import pandas as pd
 from joblib import Parallel, delayed
 
 import mne
 import coffeine
 
-from config_chbp_eeg import bids_root, deriv_root, N_JOBS
+parser = argparse.ArgumentParser(description='Compute features.')
+parser.add_argument('-d', '--dataset',
+                    help='the dataset for which features should be computed')
+args = parser.parse_args()
+dataset = args.dataset
+
+config_map = {'chbp': "config_chbp_eeg", 'tuab': "config_tuab"}
+if dataset not in config_map:
+    raise ValueError(f"We don't know the dataset '{dataset}' you requested.")
+
+cfg = importlib.import_module(config_map[dataset])
+bids_root = cfg.bids_root
+deriv_root = cfg.deriv_root
+task = cfg.task
+N_JOBS = cfg.N_JOBS
+DEBUG = False
+
+conditions = {
+    'chbp': ('eyes/closed', 'eyes/open', 'eyes'),
+    'tuab': ('rest',)
+}[dataset]
+
+session = ''
+sessions = cfg.sessions
+if dataset == 'tuab':
+    session = f'ses-{sessions[0]}'
 
 subjects_df = pd.read_csv(bids_root / "participants.tsv", sep='\t')
 
-subjects = [sub for sub in subjects_df.participant_id if
-            (deriv_root / sub / 'eeg').exists()]
+subjects = sorted(sub for sub in subjects_df.participant_id if
+                  (deriv_root / sub / session / 'eeg').exists())
+if DEBUG:
+    subjects = subjects[:1]
+    N_JOBS = 1
 
 frequency_bands = {
     "low": (0.1, 1),
@@ -22,9 +53,10 @@ frequency_bands = {
 }
 
 
-def run_subject(subject, condition):
-    fname = (deriv_root / subject / 'eeg' /
-             f'{subject}_task-protmap_proc-clean-pick-ar_epo.fif')
+def run_subject(subject, task, condition):
+    session_code = session + "_" if session else ""
+    fname = (deriv_root / subject / session / 'eeg' /
+             f'{subject}_{session_code}task-{task}_proc-clean-pick-ar_epo.fif')
     if not fname.exists():
         return 'no file'
 
@@ -32,6 +64,7 @@ def run_subject(subject, condition):
 
     features = coffeine.compute_features(
         epochs[condition],
+        features=('covs',),
         n_fft=1024, n_overlap=512, fs=epochs.info['sfreq'],
         fmax=49, frequency_bands=frequency_bands)
     out = {}
@@ -40,20 +73,28 @@ def run_subject(subject, condition):
     return out
 
 
-for condition in ('eyes/closed', 'eyes/open', 'eyes'):
+for condition in conditions:
+    print(f"computing features on {dataset} for '{condition}'")
     features = Parallel(n_jobs=N_JOBS)(
-        delayed(run_subject)(sub, condition=condition)
+        delayed(run_subject)(sub, task=task, condition=condition)
         for sub in subjects)
 
     out = {sub: ff for sub, ff in zip(subjects, features)
            if not isinstance(ff, str)}
 
-    label = 'pooled'
-    if '/' in condition:
-        _, label = condition.split("/")
+    label = None
+    if dataset == "chbp":
+        label = 'pooled'
+        if '/' in condition:
+            label = f'eyes-{condition.split("/")[1]}'
+    elif dataset == "tuab":
+        label = 'rest'
+
+    out_fname = deriv_root / f'features_{label}.h5'
+    log_out_fname = deriv_root / f'feature_{label}-log.csv'
 
     mne.externals.h5io.write_hdf5(
-        deriv_root / f'features_eyes-{label}.h5',
+        out_fname,
         out,
         overwrite=True
     )
@@ -61,4 +102,5 @@ for condition in ('eyes/closed', 'eyes/open', 'eyes'):
     logging = ['OK' if not isinstance(ff, str) else ff for sub, ff in
                zip(subjects, features)]
     out_log = pd.DataFrame({"ok": logging, "subject": subjects})
-    out_log.to_csv(deriv_root / f'feature_eyes-{label}-log.csv')
+    out_log.to_csv(log_out_fname)
+

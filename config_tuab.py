@@ -16,6 +16,10 @@ deriv_root = pathlib.Path(
 task = "rest"
 # task = "normal"
 
+analyze_channels = ['Fp1', 'Fp2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1',
+                    'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2',
+                    'Fz', 'Cz', 'Pz']
+
 conditions = []
 
 sessions = ["001"]

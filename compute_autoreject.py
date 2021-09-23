@@ -1,3 +1,5 @@
+import importlib
+import argparse
 from joblib import Parallel, delayed
 
 import pandas as pd
@@ -7,52 +9,70 @@ import autoreject
 
 from config_chbp_eeg import bids_root, deriv_root, N_JOBS, analyze_channels
 
-subjects_list = list(bids_root.glob('*'))
+parser = argparse.ArgumentParser(description='Compute autoreject.')
+parser.add_argument('-d', '--dataset',
+                    help='the dataset for which features should be computed')
+args = parser.parse_args()
+dataset = args.dataset
+
+config_map = {'chbp': "config_chbp_eeg", 'tuab': "config_tuab"}
+if dataset not in config_map:
+    raise ValueError(f"We don't know the dataset '{dataset}' you requested.")
+
+cfg = importlib.import_module(config_map[dataset])
+bids_root = cfg.bids_root
+deriv_root = cfg.deriv_root
+task = cfg.task
+analyze_channels = cfg.analyze_channels
+N_JOBS = cfg.N_JOBS
+DEBUG = False
+    
+
+session = ''
+sessions = cfg.sessions
+if dataset == 'tuab':
+    session = f'ses-{sessions[0]}'
+
+conditions = {
+    'chbp': ('eyes/closed', 'eyes/open', 'eyes'),
+    'tuab': ('rest',)
+}[dataset]
+
 
 subjects_df = pd.read_csv(bids_root / "participants.tsv", sep='\t')
 
-subjects = [sub for sub in subjects_df.participant_id if
-            (deriv_root / sub / 'eeg').exists()]
+subjects = sorted(sub for sub in subjects_df.participant_id if
+                  (deriv_root / sub / session / 'eeg').exists())
+if DEBUG:
+    subjects = subjects[:1]
+    N_JOBS = 1
 
-# df_common_names = pd.read_csv('./outputs/common_channels.csv')
 
-
-def run_subject(subject):
-    fname = (deriv_root / subject / 'eeg' /
-             f'{subject}_task-protmap_proc-clean_epo.fif')
+def run_subject(subject, task):
+    session_code = session + "_" if session else ""
+    fname = (deriv_root / subject / session / 'eeg' /
+             f'{subject}_{session_code}task-{task}_proc-clean_epo.fif')
     ok = 'OK'
     if not fname.exists():
         return 'no file'
     epochs = mne.read_epochs(fname, proj=False)
-    has_eyes = any(eyes in epochs.event_id for eyes in
-                   ('eyes/closed', 'eyes/open'))
-    if not has_eyes:
+    has_conditions = any(cond in epochs.event_id for cond in
+                         conditions)
+    if not has_conditions:
         return 'no event'
-    # epochs = epochs['eyes']
-    # epochs.pick_channels(df_common_names.name.values)
-    epochs.pick_channels(analyze_channels)
+    if analyze_channels:
+        epochs.pick_channels(analyze_channels)
 
-    if True:
-        ar = autoreject.AutoReject(n_jobs=1, cv=5)
-        epochs = ar.fit_transform(epochs)
+    ar = autoreject.AutoReject(n_jobs=1, cv=5)
+    epochs = ar.fit_transform(epochs)
 
-    if False:
-        reject = autoreject.get_rejection_threshold(
-            epochs=epochs, ch_types=['eeg'], decim=1,
-            verbose=False
-        )
-        epochs.drop_bad(reject)
-
-    out_fname = deriv_root / subject / \
-        'eeg' / f'{subject}_task-protmap_proc-clean-pick-ar_epo.fif'
-
-    # epochs.set_eeg_reference('average')
+    out_fname = str(fname).replace("proc-clean", "proc-clean-pick-ar")
     epochs.save(out_fname, overwrite=True)
     return ok
 
-
+print(f"computing autorejct on {dataset}")
 logging = Parallel(n_jobs=N_JOBS)(
-  delayed(run_subject)(sub) for sub in subjects)
+  delayed(run_subject)(sub, task=task) for sub in subjects)
 
 out_log = pd.DataFrame({"ok": logging, "subject": subjects})
 out_log.to_csv(deriv_root / 'autoreject_log.csv')

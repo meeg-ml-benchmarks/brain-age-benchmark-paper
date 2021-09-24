@@ -1,5 +1,6 @@
 library(ggplot2)
-library(scales)     
+library(scales)
+library(ggthemes)   
 # fig 1
 
 set.seed(42)

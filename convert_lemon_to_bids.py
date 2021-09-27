@@ -1,11 +1,13 @@
 import argparse
 import os
 import pathlib
+from tkinter import BOTTOM
 import urllib.request
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
 import mne
+from mne.io.brainvision.brainvision import _aux_vhdr_info
 
 from mne_bids import write_raw_bids, print_dir_tree, make_report, BIDSPath
 
@@ -19,8 +21,7 @@ lemon_info['age_guess'] = np.array(
   lemon_info['Age'].str.split('-').tolist(), dtype=np.int).mean(1)
 subjects = list(lemon_info.index)
 
-
-def convert_lemon_to_bids(tuh_data_dir, bids_save_dir, n_jobs=1, DEBUG=False):
+def convert_lemon_to_bids(lemon_data_dir, bids_save_dir, n_jobs=1, DEBUG=False):
     """Convert TUAB dataset to BIDS format.
 
     Parameters
@@ -37,15 +38,19 @@ def convert_lemon_to_bids(tuh_data_dir, bids_save_dir, n_jobs=1, DEBUG=False):
     if DEBUG:
         subjects_ = subjects[:1]
 
-    Parallel(n_jobs=n_jobs)(
-        delayed(_convert_subject)(subject, tuh_data_dir, bids_save_dir)
+    good_subjects = Parallel(n_jobs=n_jobs)(
+        delayed(_convert_subject)(subject, lemon_data_dir, bids_save_dir)
         for subject in subjects_) 
-
+    subjects_ = [sub for sub in good_subjects if not isinstance(sub, tuple)]
+    _, bad_subjects, errs = zip(*[
+        sub for sub in good_subjects if isinstance(sub, tuple)])
+    bad_subjects = pd.DataFrame(
+        dict(subjects=bad_subjects, error=errs))
+    bad_subjects.to_csv(
+        '/storage/store3/data/LEMON_EEG_BIDS/bids_conv_erros.csv')
     # update the participants file as LEMON has no official age data
-    boom
     participants = pd.read_csv(
-        "/storage/store3/data/LEMON_EEG_BIDS/participants.tsv",
-        sep='\t')
+        "/storage/store3/data/LEMON_EEG_BIDS/participants.tsv", sep='\t')
     participants = participants.set_index("participant_id")
     participants.loc[subjects_, 'age'] = lemon_info.loc[subjects_, 'age_guess']
     participants.to_csv(
@@ -54,37 +59,41 @@ def convert_lemon_to_bids(tuh_data_dir, bids_save_dir, n_jobs=1, DEBUG=False):
 
 def _convert_subject(subject, data_path, bids_save_dir):
     """Get the work done for one subject"""
+    try:
+        fname = pathlib.Path(data_path) / subject / "RSEEG" / f"{subject}.vhdr"    
+        raw = mne.io.read_raw_brainvision(fname)
 
-    fname = pathlib.Path(data_path) / subject / "RSEEG" / f"{subject}.vhdr"
-    raw = mne.io.read_raw_brainvision(fname)
-    raw.set_channel_types({"VEOG": "eog"})
+        raw.set_channel_types({"VEOG": "eog"})
+        montage = mne.channels.make_standard_montage('standard_1005')
+        raw.set_montage(montage)
+        sub_id = subject.strip("sub-")
+        raw.info['subject_info'] = {
+            'participant_id': sub_id,
+            'sex': lemon_info.loc[subject, 'gender'],
+            'age': lemon_info.loc[subject, 'age_guess'],
+            # XXX LEMON shares no public age 
+            'hand': lemon_info.loc[subject, 'Handedness']
+        }
+        events, _ = mne.events_from_annotations(raw)
 
-    montage = mne.channels.make_standard_montage('standard_1005')
-    raw.set_montage(montage)
-    sub_id = subject.strip("sub-")
-    raw.info['subject_info'] = {
-        'participant_id': sub_id,
-        'sex': lemon_info.loc[subject, 'gender'],
-        'age': lemon_info.loc[subject, 'age_guess'],
-        # XXX LEMON shares no public age 
-        'hand': lemon_info.loc[subject, 'Handedness']
-    }
-    events, _ = mne.events_from_annotations(raw)
+        events = events[(events[:, 2] == 200) | (events[:, 2] == 210)]
+        event_id = {"eyes/open": 200, "eyes/closed": 210}
+        bids_path = BIDSPath(
+            subject=sub_id, session=None, task='RSEEG',
+            run=None,
+            root=bids_save_dir, datatype='eeg', check=True)
 
-    events = events[(events[:, 2] == 200) | (events[:, 2] == 210)]
-    event_id = {"eyes/open": 200, "eyes/closed": 210}
-    bids_path = BIDSPath(
-        subject=sub_id, session=None, task='RSEEG',
-        run=None,
-        root=bids_save_dir, datatype='eeg', check=True)
-
-    write_raw_bids(
-      raw,
-      bids_path,
-      events_data=events,
-      event_id=event_id,
-      overwrite=True
-    )
+        write_raw_bids(
+            raw,
+            bids_path,
+            events_data=events,
+            event_id=event_id,
+            overwrite=True
+        )
+    except Exception as err:
+        print(err)
+        return ("BAD", subject, err)
+    return subject
 
 
 if __name__ == '__main__':
@@ -111,4 +120,3 @@ if __name__ == '__main__':
 
     print_dir_tree(args.bids_data_dir)
     print(make_report(args.bids_data_dir))
-

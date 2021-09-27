@@ -2,6 +2,7 @@ import argparse
 import os
 import pathlib
 import urllib.request
+import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
 import mne
@@ -14,15 +15,12 @@ lemon_info = lemon_info.set_index("ID")
 eeg_subjects = pd.read_csv('./lemon_eeg_subjects.csv')
 lemon_info = lemon_info.loc[eeg_subjects.subject]
 lemon_info['gender'] = lemon_info['Gender_ 1=female_2=male'].map({1: 2, 2: 1})
-
-subjects = sorted(lemon_info.index)
-
-DEBUG = False
-if DEBUG:
-    subjects = subjects[:1]
+lemon_info['age_guess'] = np.array(
+  lemon_info['Age'].str.split('-').tolist(), dtype=np.int).mean(1)
+subjects = list(lemon_info.index)
 
 
-def convert_lemon_to_bids(tuh_data_dir, bids_save_dir, n_jobs=1):
+def convert_lemon_to_bids(tuh_data_dir, bids_save_dir, n_jobs=1, DEBUG=False):
     """Convert TUAB dataset to BIDS format.
 
     Parameters
@@ -35,9 +33,23 @@ def convert_lemon_to_bids(tuh_data_dir, bids_save_dir, n_jobs=1):
     n_jobs : None | int
         Number of jobs for parallelization.
     """
+    subjects_ = subjects
+    if DEBUG:
+        subjects_ = subjects[:1]
+
     Parallel(n_jobs=n_jobs)(
         delayed(_convert_subject)(subject, tuh_data_dir, bids_save_dir)
-        for subject in subjects) 
+        for subject in subjects_) 
+
+    # update the participants file as LEMON has no official age data
+    boom
+    participants = pd.read_csv(
+        "/storage/store3/data/LEMON_EEG_BIDS/participants.tsv",
+        sep='\t')
+    participants = participants.set_index("participant_id")
+    participants.loc[subjects_, 'age'] = lemon_info.loc[subjects_, 'age_guess']
+    participants.to_csv(
+        "/storage/store3/data/LEMON_EEG_BIDS/participants.tsv", sep='\t')
 
 
 def _convert_subject(subject, data_path, bids_save_dir):
@@ -50,10 +62,12 @@ def _convert_subject(subject, data_path, bids_save_dir):
     montage = mne.channels.make_standard_montage('standard_1005')
     raw.set_montage(montage)
     sub_id = subject.strip("sub-")
-    subject_info = {
+    raw.info['subject_info'] = {
         'participant_id': sub_id,
         'sex': lemon_info.loc[subject, 'gender'],
-        'handedness': None  # Not available
+        'age': lemon_info.loc[subject, 'age_guess'],
+        # XXX LEMON shares no public age 
+        'hand': lemon_info.loc[subject, 'Handedness']
     }
     events, _ = mne.events_from_annotations(raw)
 
@@ -72,8 +86,8 @@ def _convert_subject(subject, data_path, bids_save_dir):
       overwrite=True
     )
 
-if __name__ == '__main__':
 
+if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Convert LEMON to BIDS.')
     parser.add_argument(
         '--lemon_data_dir', type=str,
@@ -86,10 +100,15 @@ if __name__ == '__main__':
     parser.add_argument(
         '--n_jobs', type=int, default=1,
         help='number of parallel processes to use (default: 1)')
+    parser.add_argument(
+        '--DEBUG', type=bool, default=False,
+        help='activate debugging mode')
     args = parser.parse_args()
 
     convert_lemon_to_bids(
-        args.lemon_data_dir, args.bids_data_dir, n_jobs=args.n_jobs)
+        args.lemon_data_dir, args.bids_data_dir, n_jobs=args.n_jobs,
+        DEBUG=args.DEBUG)
 
     print_dir_tree(args.bids_data_dir)
     print(make_report(args.bids_data_dir))
+

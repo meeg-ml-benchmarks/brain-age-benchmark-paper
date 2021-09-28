@@ -45,7 +45,7 @@ def convert_lemon_to_bids(lemon_data_dir, bids_save_dir, n_jobs=1, DEBUG=False):
     _, bad_subjects, errs = zip(*[
         sub for sub in good_subjects if isinstance(sub, tuple)])
     bad_subjects = pd.DataFrame(
-        dict(subjects=bad_subjects, error=errs))
+        dict(subjects= bad_subjects, error=errs))
     bad_subjects.to_csv(
         '/storage/store3/data/LEMON_EEG_BIDS/bids_conv_erros.csv')
     # update the participants file as LEMON has no official age data

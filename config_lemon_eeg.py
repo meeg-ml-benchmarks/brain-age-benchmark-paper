@@ -42,6 +42,7 @@ on_rename_missing_events = "warn"
 
 N_JOBS = 30
 
+decim = 5 # LEMON has 1000 Hz; Cuban Human Brain Project 200Hz 
 epochs_tmin = 0
 epochs_tmax = 10
 baseline = None

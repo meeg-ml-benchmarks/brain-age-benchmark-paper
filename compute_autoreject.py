@@ -15,7 +15,9 @@ parser.add_argument('-d', '--dataset',
 args = parser.parse_args()
 dataset = args.dataset
 
-config_map = {'chbp': "config_chbp_eeg", 'tuab': "config_tuab"}
+config_map = {'chbp': "config_chbp_eeg",
+              'lemon': "config_lemon_eeg",
+              'tuab': "config_tuab"}
 if dataset not in config_map:
     raise ValueError(f"We don't know the dataset '{dataset}' you requested.")
 
@@ -34,6 +36,7 @@ if dataset == 'tuab':
     session = f'ses-{sessions[0]}'
 
 conditions = {
+    'lemon': ('eyes/closed', 'eyes/open', 'eyes'),
     'chbp': ('eyes/closed', 'eyes/open', 'eyes'),
     'tuab': ('rest',)
 }[dataset]

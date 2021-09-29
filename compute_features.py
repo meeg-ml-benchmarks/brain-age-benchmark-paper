@@ -13,7 +13,9 @@ parser.add_argument('-d', '--dataset',
 args = parser.parse_args()
 dataset = args.dataset
 
-config_map = {'chbp': "config_chbp_eeg", 'tuab': "config_tuab"}
+config_map = {'chbp': "config_chbp_eeg",
+              'lemon': "config_lemon_eeg",
+              'tuab': "config_tuab"}
 if dataset not in config_map:
     raise ValueError(f"We don't know the dataset '{dataset}' you requested.")
 
@@ -25,6 +27,7 @@ N_JOBS = cfg.N_JOBS
 DEBUG = False
 
 conditions = {
+    'lemon': ('eyes/closed', 'eyes/open', 'eyes'),
     'chbp': ('eyes/closed', 'eyes/open', 'eyes'),
     'tuab': ('rest',)
 }[dataset]
@@ -61,6 +64,8 @@ def run_subject(subject, task, condition):
         return 'no file'
 
     epochs = mne.read_epochs(fname, proj=False)
+    if not any(condition in cc for cc in epochs.event_id):
+        return 'condition not found'
 
     features = coffeine.compute_features(
         epochs[condition],

@@ -67,11 +67,14 @@ def run_subject(subject, task, condition):
     if not any(condition in cc for cc in epochs.event_id):
         return 'condition not found'
 
-    features = coffeine.compute_features(
-        epochs[condition],
-        features=('covs',),
-        n_fft=1024, n_overlap=512, fs=epochs.info['sfreq'],
-        fmax=49, frequency_bands=frequency_bands)
+    try:
+        features = coffeine.compute_features(
+            epochs[condition],
+            features=('covs',),
+            n_fft=1024, n_overlap=512, fs=epochs.info['sfreq'],
+            fmax=49, frequency_bands=frequency_bands)
+    except Exception as err:
+        return repr(err)
     out = {}
     out.update(features[0])
     out['meta_info'] = features[1]

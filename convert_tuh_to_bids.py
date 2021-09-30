@@ -15,6 +15,7 @@ E.g., to run on drago:
 import re
 import argparse
 import datetime
+import importlib
 
 import mne
 import numpy as np
@@ -23,6 +24,11 @@ from mne_bids import write_raw_bids, print_dir_tree, make_report, BIDSPath
 
 
 SEX_TO_MNE = {'n/a': 0, 'm': 1, 'f': 2}
+
+
+cfg = importlib.import_module('config_tuab')
+TUAB_ROOT = cfg.tuab_root
+BIDS_ROOT = cfg.bids_root
 
 
 def rename_tuh_channels(ch_name):
@@ -37,8 +43,7 @@ def rename_tuh_channels(ch_name):
         'ROC',
         'EKG1',
     ]
-    # match = re.findall(r'^EEG\s([A-Z]\w+)-REF$', ch_name)
-    match = re.findall(r'^([A-Z]\w+)-REF$', ch_name)
+    match = re.findall(r'^EEG\s([A-Z]\w+)-REF$', ch_name)
     if len(match) == 1:
         out = match[0]
         out = out.replace('FP', 'Fp').replace('Z', 'z')  # Apply rules
@@ -178,11 +183,10 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Convert TUH to BIDS.')
     parser.add_argument(
-        '--tuab_data_dir', type=str,
-        default='/storage/store/data/tuh_eeg/www.isip.piconepress.com/projects/tuh_eeg/downloads/tuh_eeg_abnormal/v2.0.0/edf',
+        '--tuab_data_dir', type=str, default=TUAB_ROOT,
         help='Path to the original data.')
     parser.add_argument(
-        '--bids_data_dir', type=str,
+        '--bids_data_dir', type=str, default=BIDS_ROOT,
         help='Path to where the converted data should be saved.')
     parser.add_argument(
         '--healthy_only', type=bool, default=False,

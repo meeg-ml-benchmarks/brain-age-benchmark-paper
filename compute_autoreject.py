@@ -7,7 +7,6 @@ import pandas as pd
 import mne
 import autoreject
 
-from config_chbp_eeg import bids_root, deriv_root, N_JOBS, analyze_channels
 
 parser = argparse.ArgumentParser(description='Compute autoreject.')
 parser.add_argument('-d', '--dataset',
@@ -26,7 +25,7 @@ task = cfg.task
 analyze_channels = cfg.analyze_channels
 N_JOBS = cfg.N_JOBS
 DEBUG = False
-    
+
 
 session = ''
 sessions = cfg.sessions
@@ -61,7 +60,10 @@ def run_subject(subject, task):
     if not has_conditions:
         return 'no event'
     if analyze_channels:
+        if hasattr(cfg, 'ch_mapping'):
+            epochs.rename_channels(cfg.ch_mapping)
         epochs.pick_channels(analyze_channels)
+        epochs.set_montage('standard_1005')
 
     ar = autoreject.AutoReject(n_jobs=1, cv=5)
     epochs = ar.fit_transform(epochs)
@@ -70,9 +72,9 @@ def run_subject(subject, task):
     epochs.save(out_fname, overwrite=True)
     return ok
 
-print(f"computing autorejct on {dataset}")
+print(f"computing autoreject on {dataset}")
 logging = Parallel(n_jobs=N_JOBS)(
-  delayed(run_subject)(sub, task=task) for sub in subjects)
+    delayed(run_subject)(sub, task=task) for sub in subjects)
 
 out_log = pd.DataFrame({"ok": logging, "subject": subjects})
 out_log.to_csv(deriv_root / 'autoreject_log.csv')

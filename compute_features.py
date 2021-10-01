@@ -13,9 +13,11 @@ parser.add_argument('-d', '--dataset',
 args = parser.parse_args()
 dataset = args.dataset
 
+
 config_map = {'chbp': "config_chbp_eeg",
               'lemon': "config_lemon_eeg",
-              'tuab': "config_tuab"}
+              'tuab': "config_tuab",
+              'camcan': "config_camcan_meg"}
 if dataset not in config_map:
     raise ValueError(f"We don't know the dataset '{dataset}' you requested.")
 
@@ -23,24 +25,26 @@ cfg = importlib.import_module(config_map[dataset])
 bids_root = cfg.bids_root
 deriv_root = cfg.deriv_root
 task = cfg.task
+data_type = cfg.data_type
 N_JOBS = cfg.N_JOBS
 DEBUG = False
 
 conditions = {
     'lemon': ('eyes/closed', 'eyes/open', 'eyes'),
     'chbp': ('eyes/closed', 'eyes/open', 'eyes'),
-    'tuab': ('rest',)
+    'tuab': ('rest',),
+    'camcan': ('rest',)
 }[dataset]
 
 session = ''
 sessions = cfg.sessions
-if dataset == 'tuab':
+if dataset in ('tuab', 'camcan'):
     session = f'ses-{sessions[0]}'
 
 subjects_df = pd.read_csv(bids_root / "participants.tsv", sep='\t')
 
 subjects = sorted(sub for sub in subjects_df.participant_id if
-                  (deriv_root / sub / session / 'eeg').exists())
+                  (deriv_root / sub / session / data_type).exists())
 if DEBUG:
     subjects = subjects[:1]
     N_JOBS = 1
@@ -58,7 +62,7 @@ frequency_bands = {
 
 def run_subject(subject, task, condition):
     session_code = session + "_" if session else ""
-    fname = (deriv_root / subject / session / 'eeg' /
+    fname = (deriv_root / subject / session / data_type /
              f'{subject}_{session_code}task-{task}_proc-clean-pick-ar_epo.fif')
     if not fname.exists():
         return 'no file'

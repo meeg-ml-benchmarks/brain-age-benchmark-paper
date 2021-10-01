@@ -27,7 +27,7 @@ task = cfg.task
 analyze_channels = cfg.analyze_channels
 data_type = cfg.data_type
 N_JOBS = cfg.N_JOBS
-DEBUG = True
+DEBUG = False
     
 
 session = ''

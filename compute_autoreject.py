@@ -7,8 +7,6 @@ import pandas as pd
 import mne
 import autoreject
 
-from config_chbp_eeg import bids_root, deriv_root, N_JOBS, analyze_channels
-
 parser = argparse.ArgumentParser(description='Compute autoreject.')
 parser.add_argument('-d', '--dataset',
                     help='the dataset for which features should be computed')
@@ -17,7 +15,8 @@ dataset = args.dataset
 
 config_map = {'chbp': "config_chbp_eeg",
               'lemon': "config_lemon_eeg",
-              'tuab': "config_tuab"}
+              'tuab': "config_tuab",
+              'camcan': "config_camcan_meg"}
 if dataset not in config_map:
     raise ValueError(f"We don't know the dataset '{dataset}' you requested.")
 
@@ -26,26 +25,28 @@ bids_root = cfg.bids_root
 deriv_root = cfg.deriv_root
 task = cfg.task
 analyze_channels = cfg.analyze_channels
+data_type = cfg.data_type
 N_JOBS = cfg.N_JOBS
 DEBUG = False
     
 
 session = ''
 sessions = cfg.sessions
-if dataset == 'tuab':
+if dataset in ('tuab', 'camcan'):
     session = f'ses-{sessions[0]}'
 
 conditions = {
     'lemon': ('eyes/closed', 'eyes/open', 'eyes'),
     'chbp': ('eyes/closed', 'eyes/open', 'eyes'),
-    'tuab': ('rest',)
+    'tuab': ('rest',),
+    'camcan': ('rest',)
 }[dataset]
 
 
 subjects_df = pd.read_csv(bids_root / "participants.tsv", sep='\t')
 
 subjects = sorted(sub for sub in subjects_df.participant_id if
-                  (deriv_root / sub / session / 'eeg').exists())
+                  (deriv_root / sub / session / data_type).exists())
 if DEBUG:
     subjects = subjects[:1]
     N_JOBS = 1
@@ -53,7 +54,7 @@ if DEBUG:
 
 def run_subject(subject, task):
     session_code = session + "_" if session else ""
-    fname = (deriv_root / subject / session / 'eeg' /
+    fname = (deriv_root / subject / session / data_type /
              f'{subject}_{session_code}task-{task}_proc-clean_epo.fif')
     ok = 'OK'
     if not fname.exists():

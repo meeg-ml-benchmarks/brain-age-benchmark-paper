@@ -7,7 +7,7 @@ study_name = "age-prediction-benchmark"
 bids_root = pathlib.Path(
     '/storage/store/data/camcan/BIDSsep/rest')
 
-deriv_root = pathlib.Path('/storage/store3/work/amellot/derivatives')
+deriv_root = pathlib.Path('/storage/store3/work/camcan-bids/derivatives')
 
 task = 'rest'
 sessions = ['rest']  # keep empty for code flow

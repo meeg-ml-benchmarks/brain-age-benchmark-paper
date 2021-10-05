@@ -98,8 +98,8 @@ hc_func_params = {
 if DEBUG:
     subjects = subjects[:1]
     N_JOBS = 1
-    frequency_bands = frequency_bands.pop('alpha')
-    hc_selected_funcs = hc_selected_funcs[0]
+    frequency_bands = {"alpha": (8.0, 15.0)}
+    hc_selected_funcs = ['std']
     hc_func_params = dict()
 
 

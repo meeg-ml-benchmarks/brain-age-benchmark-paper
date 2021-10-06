@@ -2,12 +2,29 @@ import pathlib
 import mne
 ##
 
+
+def get_t1_from_meeg(bids_path):
+    bids_path.update(root='/storage/store/data/camcan/BIDSsep/anat',
+                     session=None)
+    return bids_path
+
+
 study_name = "age-prediction-benchmark"
 
 bids_root = pathlib.Path(
     '/storage/store/data/camcan/BIDSsep/rest')
 
 deriv_root = pathlib.Path('/storage/store3/work/camcan-bids/derivatives')
+
+subjects_dir = '/storage/store/data/camcan-mne/freesurfer'
+
+source_info_update = {'processing': 'clean',
+                      'suffix': 'epo'}
+
+inverse_targets = None
+
+process_er = True
+noise_cov = 'emptyroom'
 
 task = 'rest'
 sessions = ['rest']  # keep empty for code flow
@@ -68,11 +85,14 @@ mf_ctc_fname = '/storage/store/data/camcan-mne/Cam-CAN_ct_sparse.fif'
 find_flat_channels_meg = True
 find_noisy_channels_meg = True
 use_maxwell_filter = True
+run_source_estimation = True
 
 event_repeated = "drop"
 l_trans_bandwidth = "auto"
 
 h_trans_bandwidth = "auto"
+
+mri_t1_path_generator = get_t1_from_meeg
 
 random_state = 42
 

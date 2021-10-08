@@ -39,7 +39,8 @@ good_subjects
 df_demographics = df_demographics.loc[good_subjects]
 
 kind = "eyes-pooled"
-features = mne.externals.h5io.read_hdf5(deriv_root / f'features_{kind}.h5')
+features = mne.externals.h5io.read_hdf5(
+    deriv_root / f'features_fb_covs_{kind}.h5')
 covs = [features[sub]['covs'] for sub in df_demographics.index]
 X_covs = np.array(covs)
 print(X_covs.shape)

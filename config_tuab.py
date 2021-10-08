@@ -1,15 +1,12 @@
-import pathlib
+from sys import path
+from pathlib import Path
 
 study_name = "age-prediction-benchmark"
 
-bids_root = pathlib.Path(
-    "/storage/store2/data/TUAB-healthy-bids2"
-    # "/storage/store2/data/TUAB-healthy-bids-nosplit"
-)
-
-deriv_root = pathlib.Path(
-    "/storage/store3/derivatives/TUAB-healthy-bids2")
-# "/storage/store2/derivatives/eeg-pred-modeling-summer-school/")
+# On drago
+N_JOBS = 30
+bids_root = Path("/storage/store2/data/TUAB-healthy-bids2")
+deriv_root = Path("/storage/store3/derivatives/TUAB-healthy-bids2")
 
 # subjects = ['00002355']
 
@@ -41,8 +38,6 @@ reject = None
 on_error = "abort"
 on_rename_missing_events = "warn"
 
-# N_JOBS = 1
-N_JOBS = 30
 
 epochs_tmin = 0
 epochs_tmax = 10

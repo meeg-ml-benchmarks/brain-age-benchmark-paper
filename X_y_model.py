@@ -15,11 +15,12 @@ def create_windows_ds(fnames, ages):
     # read all the epochs fif files
     epochs = [mne.read_epochs(fname, preload=False) for fname in fnames]
     assert len(epochs) == len(ages)
-    # insert the age of the subjects into the epochs events as decription
+    # insert the age of the subjects into the epochs events as description
     # this is where braindecode expects them
     for i in range(len(epochs)):
         epochs[i].events[:, -1] = len(epochs[i]) * [ages[i]]
     # make sure we do not have a mess of window lengths / number of chs
+    # therefore, load a single window of every epochs file and check its shape
     window_sizes = [e.get_data(item=0).shape[-1] for e in epochs]
     assert len(set(window_sizes)) == 1
     n_channels = [e.get_data(item=0).shape[-2] for e in epochs]
@@ -29,7 +30,8 @@ def create_windows_ds(fnames, ages):
     # assuming we obtain pre-cut trials, with the following line we are limited
     # to do trialwise decoding, since we set window_size to the length of the
     # trial. it could be beneficial to use an actual window_size smaller then
-    # the trial length and to run cropped decoding.
+    # the trial length and to run cropped decoding (requires adjustment of the
+    # loss computation etc).
     windows_ds = create_from_mne_epochs(
         list_of_epochs=epochs,
         window_size_samples=window_sizes[0],
@@ -42,7 +44,6 @@ def create_windows_ds(fnames, ages):
 def create_model(model_name, window_size, n_channels, seed):
     # check if GPU is available, if True chooses to use it
     cuda = torch.cuda.is_available()
-    device = 'cuda' if cuda else 'cpu'
     if cuda:
         torch.backends.cudnn.benchmark = True
     # Set random seed to be able to reproduce results
@@ -96,9 +97,10 @@ def create_model_and_data_split(
     )
 
     # TODO: there might be a better way to perform cv. check out skorch
-    # we already need split data to initialize the EEGRegressor
-    # since we do 10 fold cv, use the fold input argument to determine the split
-    # ids here again and split the data accordingly
+    # we already need split data to initialize the EEGRegressor, since we want
+    # to give it a predefined validation set.
+    # therefore, use the input arguments cv and fold to determine the split
+    # ids here and split the data accordingly
     example_ids = np.arange(len(windows_ds))
     for fold_i, (train_is, valid_is) in enumerate(cv.split(example_ids)):
         if fold_i == fold:
@@ -106,9 +108,12 @@ def create_model_and_data_split(
     train_set = windows_ds.split(by=train_is)['0']
     valid_set = windows_ds.split(by=valid_is)['0']
 
+    # batch scoring did not enable usage of sklearn functions like
+    # cross_val_score with the EEGRegressor
+    from skorch.callbacks import BatchScoring
     clf = EEGRegressor(
         model,
-        criterion=torch.nn.MSELoss,
+        criterion=torch.nn.L1Loss,  # optimize MAE
         optimizer=torch.optim.AdamW,
         train_split=predefined_split(valid_set),
         # using valid_set for validation
@@ -116,11 +121,12 @@ def create_model_and_data_split(
         optimizer__weight_decay=weight_decay,
         batch_size=batch_size,
         callbacks=[
-            "r2",
-            "neg_mean_absolute_error",
+            # TODO: use skorch callbacks over simple strings
+            ("R2", BatchScoring('r2', lower_is_better=False)),
+            #  ("MAE", BatchScoring("neg_mean_absolute_error", lower_is_better=False)),
             ("lr_scheduler", LRScheduler('CosineAnnealingLR', T_max=n_epochs-1)),
         ],
-        device=device,
+        device='cuda' if torch.cuda.is_available() else 'cpu',
     )
     # y is None, since the train_set returns x, y, ind when iterrated, all that
     # is needed for training to work

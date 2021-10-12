@@ -84,7 +84,7 @@ seed = 20211012
 metrics = ('neg_mean_absolute_error', 'r2')
 for model_name in ['shallow', 'deep']:
     scores = {m: [] for m in metrics}
-    for i in range(n_folds):
+    for fold_i in range(n_folds):
         cv = KFold(n_splits=n_folds, shuffle=True, random_state=42)
         X, y, model = create_model_and_data_split(
             model_name=model_name,
@@ -92,7 +92,7 @@ for model_name in ['shallow', 'deep']:
             n_channels=n_channels,
             window_size=window_size,
             n_epochs=n_epochs,
-            fold=i,
+            fold=fold_i,
             cv=cv,
             seed=seed,
             batch_size=batch_size,
@@ -103,6 +103,7 @@ for model_name in ['shallow', 'deep']:
 
 
 # TODO: re-build expected dataframe
+"""
         print(f'{score_key}({name}) = {scores.mean()}')
         results.append(pd.DataFrame(this_result))
 
@@ -113,3 +114,4 @@ sns.barplot(x='score', y='metric', hue='model',
             data=results.query("metric == 'MAE'"))
 plt.savefig('results_braindecode_mae.pdf')
 plt.show()
+"""

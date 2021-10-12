@@ -154,11 +154,11 @@ for condition in conditions:
            if not isinstance(ff, str)}
 
     label = None
-    if dataset == "chbp":
+    if dataset in ("chbp", "lemon"):
         label = 'pooled'
         if '/' in condition:
             label = f'eyes-{condition.split("/")[1]}'
-    elif dataset == "tuab":
+    elif dataset in ("tuab", 'camcan'):
         label = 'rest'
 
     out_fname = deriv_root / f'features_{FEATURE_TYPE}_{label}.h5'

@@ -12,7 +12,7 @@ deriv_root = pathlib.Path("/storage/store3/derivatives/CHBMP_EEG_and_MRI/")
 task = "protmap"
 
 sessions = []  # keep empty for code flow
-datatype = "eeg"
+data_type = "eeg"
 ch_types = ["eeg"]
 
 analyze_channels = [
@@ -31,11 +31,7 @@ h_freq = 49
 
 eeg_reference = []
 
-eog_channels = ["Fp1"]
-
 find_breaks = False
-
-spatial_filter = 'ssp'
 
 n_proj_eog = 1
 

@@ -1,4 +1,5 @@
 # %% imports
+import importlib
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -16,71 +17,117 @@ from sklearn.model_selection import KFold
 
 import coffeine
 
-from config_chbp_eeg import bids_root, deriv_root, analyze_channels
+config_map = {'chbp': "config_chbp_eeg",
+              'lemon': "config_lemon_eeg",
+              'tuab': "config_tuab",
+              'camcan': "config_camcan_meg"}
 
-subjects_df = pd.read_csv(bids_root / "participants.tsv", sep='\t')
-
-# %% get age
-df_demographics = pd.read_csv(
-    bids_root / '..' / '..' / 'CHBMP_Cognitive_Scales' /
-    'Demographic_data.csv', header=1
-)
-
-df_demographics = df_demographics.iloc[:, :5].set_index('Code')
-df_demographics.index = "sub-" + df_demographics.index
-df_demographics.index
-
-# now we read in the processing log to see for which participants we have EEG
-proc_log = pd.read_csv(deriv_root / 'autoreject_log.csv')
-good_subjects = proc_log.query('ok == "OK"').subject
-good_subjects
-
-# %% Restrict to good subjects
-df_demographics = df_demographics.loc[good_subjects]
-
-kind = "eyes-pooled"
-features = mne.externals.h5io.read_hdf5(
-    deriv_root / f'features_fb_covs_{kind}.h5')
-covs = [features[sub]['covs'] for sub in df_demographics.index]
-X_covs = np.array(covs)
-print(X_covs.shape)
-
-frequency_bands = {
-    "low": (0.1, 1),
-    "delta": (1, 4),
-    "theta": (4.0, 8.0),
-    "alpha": (8.0, 15.0),
-    "beta_low": (15.0, 26.0),
-    "beta_mid": (26.0, 35.0),
-    "beta_high": (35.0, 49)
+bench_config = {  # put other benchmark related config here
+    'filter_bank': {  # it can go in a seprate file later
+        'frequency_bands': {
+            "low": (0.1, 1),
+            "delta": (1, 4),
+            "theta": (4.0, 8.0),
+            "alpha": (8.0, 15.0),
+            "beta_low": (15.0, 26.0),
+            "beta_mid": (26.0, 35.0),
+            "beta_high": (35.0, 49)
+        }
+    }
 }
 
-# %% Get X and y
-X_df = pd.DataFrame(
-  {band: list(X_covs[:, ii]) for ii, band in enumerate(frequency_bands)})
+# %% get age
 
-y = df_demographics.Age.values
+def load_benchmark_data(dataset, benchmark, condition=None):
+    """Load the input features and outcome vectors for a given benchmark
+    
+    Parameters
+    ----------
+    dataset: 'camcan' | 'chbp' | 'lemon' | 'tuh'
+        The input data to consider
+    benchmark: 'filter_bank' | 'hand_crafted' | 'deep'
+        The input features to consider. If 'deep', no features are loaded.
+        Instead information for accsing the epoched data is provided.
+    condition: 'eyes-closed' | 'eyes-open' | 'pooled' | 'rest'
+        Specify from which sub conditions data should be loaded.
+    
+    Returns
+    -------
+    X: numpy.ndarray or pandas.DataFrame of shape(n_subjects, n_predictors)
+        The predictors. In the case of the filterbank models, columns can
+        represent covariances.
+    y: the outcome vector of shape(n_subjects)
+        The age used as prediction target.
+    model: object
+        The model to matching the benachmark-specific features.
+        For `filter_bank` and `hand_crafted`, a scikit-learn estimator pipleine
+        is returned.  
+    """
+    if dataset not in config_map:
+        raise ValueError(f"We don't know the dataset '{dataset}' you requested.")
 
-# %% Create models
+    cfg = importlib.import_module(config_map[dataset])
+    bids_root = cfg.bids_root
+    deriv_root = cfg.deriv_root
+    task = cfg.task
+    analyze_channels = cfg.analyze_channels
 
-filter_bank_transformer = coffeine.make_filter_bank_transformer(
-    names=list(frequency_bands),
-    method='riemann'
-)
+    df_subjects = pd.read_csv(bids_root / "participants.tsv", sep='\t')
+    df_subjects = df_subjects.set_index('participant_id')
+    # now we read in the processing log to see for which participants we have EEG
+    proc_log = pd.read_csv(deriv_root / 'autoreject_log.csv')
+    good_subjects = proc_log.query('ok == "OK"').subject
 
-filter_bank_model = make_pipeline(filter_bank_transformer, StandardScaler(),
-                                  RidgeCV(alphas=np.logspace(-5, 10, 100)))
+    # handle default for condition.
+    if condition is None:
+        if dataset in ('chbp', 'lemon'):
+            condition_ = 'pooled'
+        else:
+            condition_ = 'rest'
+    else:
+        condition_ = condition
+            
+    df_subjects = df_subjects.loc[good_subjects]
+    X, y, model = None, None, None
+    if benchmark == 'filterbank-riemann':
+        frequency_bands = bench_config['filter_bank']['frequency_bands']
+        features = mne.externals.h5io.read_hdf5(
+            deriv_root / f'features_{condition_}.h5')
+        covs = [features[sub]['covs'] for sub in df_subjects.index]
+        covs = np.array(covs)
+        X = pd.DataFrame(
+            {band: list(covs[:, ii]) for ii, band in
+             enumerate(frequency_bands)})
+        y = df_subjects.age.values
+
+        filter_bank_transformer = coffeine.make_filter_bank_transformer(
+            names=list(frequency_bands),
+            method='riemann'
+        )
+        model = make_pipeline(
+            filter_bank_transformer, StandardScaler(),
+            RidgeCV(alphas=np.logspace(-5, 10, 100)))
+
+    elif benchmark == 'hand_crafted':
+        raise NotImplementedError('not yet available')
+    elif benchmark == 'deep':
+        raise NotImplementedError('not yet available')
+
+    return X, y, model
+
+
+#%%
+X, y, model = load_benchmark_data(dataset='tuab', benchmark='filterbank-riemann')
 
 dummy_model = DummyRegressor(strategy="median")
 
 models = {
-    "filter_bank_model": filter_bank_model,
+    "filter_bank_model": model,
     "dummy_model": dummy_model
 }
 
 # %% Run CV
 cv = KFold(n_splits=10, shuffle=True, random_state=42)
-
 results = list()
 for metric in ('neg_mean_absolute_error', 'r2'):
     for name, model in models.items():
@@ -100,9 +147,3 @@ for metric in ('neg_mean_absolute_error', 'r2'):
         results.append(pd.DataFrame(this_result))
 
 results = pd.concat(results)
-
-# %% Plot some results
-sns.barplot(x='score', y='metric', hue='model',
-            data=results.query("metric == 'MAE'"))
-plt.savefig('results_mae.pdf')
-plt.show()

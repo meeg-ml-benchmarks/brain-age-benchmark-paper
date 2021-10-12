@@ -105,11 +105,12 @@ def create_model_and_data_split(
     for fold_i, (train_is, valid_is) in enumerate(cv.split(example_ids)):
         if fold_i == fold:
             break
+    # TODO: add target transform to scale ages to zero mean, unit variance
     train_set = windows_ds.split(by=train_is)['0']
     valid_set = windows_ds.split(by=valid_is)['0']
 
-    # batch scoring did not enable usage of sklearn functions like
-    # cross_val_score with the EEGRegressor
+    # using BatchScoring over strings did not enable usage of sklearn functions
+    # like cross_val_score with the EEGRegressor
     from skorch.callbacks import BatchScoring
     clf = EEGRegressor(
         model,
@@ -121,7 +122,6 @@ def create_model_and_data_split(
         optimizer__weight_decay=weight_decay,
         batch_size=batch_size,
         callbacks=[
-            # TODO: use skorch callbacks over simple strings
             ("R2", BatchScoring('r2', lower_is_better=False)),
             #  ("MAE", BatchScoring("neg_mean_absolute_error", lower_is_better=False)),
             ("lr_scheduler", LRScheduler('CosineAnnealingLR', T_max=n_epochs-1)),
@@ -153,41 +153,3 @@ def get_X_y_model(
         batch_size=batch_size,
         n_epochs=n_epochs,
     )
-
-
-
-
-
-
-
-"""
-
-def read_recordings(fnames):
-    windows_ds_list, all_n_channels, all_window_sizes = [], [], []
-    for fname in fnames:
-        single_windows_ds, n_channels, window_size = read_recording(fname)
-        windows_ds_list.append(single_windows_ds)
-        all_n_channels.append(n_channels)
-        all_window_sizes.append(window_size)
-    # theoretically, every fif file in fnames could have a different
-    # amount of time samples and a different amount of channels
-    # make sure this is not the case
-    assert len(set(all_n_channels)) == 1
-    assert len(set(all_window_sizes)) == 1
-    windows_ds = BaseConcatDataset(windows_ds_list)
-    return windows_ds, all_n_channels[0], all_window_sizes[0]
-
-
-def read_recording(fname):
-    epochs = mne.read_epochs(fname, preload=False)
-    # load a single window to know how many channels and time samples we are
-    # working with
-    n_channels, window_size = epochs.get_data(item=0).shape
-    windows_ds = create_from_mne_epochs(
-        list_of_epochs=[epochs],
-        window_size_samples=window_size,
-        window_stride_samples=window_size,
-        drop_last_window=False,
-    )
-    return windows_ds, window_size, n_channels
-"""

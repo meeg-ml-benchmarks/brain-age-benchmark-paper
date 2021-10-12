@@ -18,10 +18,10 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
 
 
-parser = argparse.ArgumentParser(description='Compute features.')
+parser = argparse.ArgumentParser(description='Braindecode network decoding.')
 parser.add_argument(
     '-d', '--dataset', choices=['chbp', 'lemon', 'tuab', 'camcan'],
-    help='the dataset for which features should be computed')
+    help='the dataset to be used in braindecode network decoding')
 args = parser.parse_args()
 dataset = args.dataset
 
@@ -71,6 +71,10 @@ elif dataset in ('tuab', 'mmd'):
 
 else:
     raise NotImplementedError
+
+# section above is (almost) a copy of compute_bechmark_handcrafted_features
+# ------------------------------------------------------------------------------
+# section below is modified to work with braindecode models
 
 # %% Load fif files with preload=False, set age as target, and create dataset
 from X_y_model import create_windows_ds

@@ -11,8 +11,63 @@ from braindecode.datasets import create_from_mne_epochs
 from braindecode import EEGRegressor
 
 
+def create_data_split(fnames, ages, cv, fold):
+    """Split the dataset into train and validation following cv and return data
+    with respect to specified fold.
+
+    Parameters
+    ----------
+    windows_ds: braindecode.datasets.BaseConcatDataset
+        The dataset to be split into train and valid.
+    cv: sklearn.model_selection.KFold
+        A scikit-learn object to generate splits (e.g. KFold).
+    fold: int
+        The id of the fold to be used in model training.
+    window_map:
+
+    Returns
+    -------
+    train_set: braindecode.datasets.BaseConcatDataset
+        The training set.
+    valid_set: braindecode.datasets.BaseConcatDataset
+        The validation set.
+    """
+    example_ids = np.arange(len(fnames))
+    print('example_ids', example_ids)
+    for fold_i, (train_is, valid_is) in enumerate(cv.split(example_ids)):
+        if fold_i == fold:
+            break
+    train_fnames = [fnames[i] for i in train_is]
+    train_ages = [ages[i] for i in train_is]
+    valid_fnames = [fnames[i] for i in valid_is]
+    valid_ages = [ages[i] for i in valid_is]
+    return train_fnames, train_ages, valid_fnames, valid_ages
+
+
+def create_datasets(train_fnames, train_ages, valid_fnames, valid_ages):
+    train_set, n_channels, window_size = create_dataset(
+        fnames=train_fnames,
+        ages=train_ages,
+    )
+    valid_set, n_channels, window_size = create_dataset(
+        fnames=valid_fnames,
+        ages=valid_ages,
+    )
+
+    mean_train_age = np.mean(train_ages)
+    std_train_age = np.std(train_ages)
+
+    def scale_age(age):
+        age = (age - mean_train_age) / std_train_age
+        return age
+
+    train_set.target_transform = scale_age
+    valid_set.target_transform = scale_age
+    return train_set, valid_set, n_channels, window_size
+
+
 # if mne logging is enabled it dramatically slows down this function
-def create_windows_ds(fnames, ages):
+def create_dataset(fnames, ages):
     """Load epochs data stored as .fif files. Expects all .fif files to have
     epochs of equal length and to have equal channels.
 
@@ -36,8 +91,6 @@ def create_windows_ds(fnames, ages):
     """
     # read all the epochs fif files
     epochs = [mne.read_epochs(fname, preload=False) for fname in fnames]
-    window_map = [i for i, e in enumerate(epochs) for _ in range(len(e.events))]
-    print('window_map', window_map, len(window_map))
     assert len(epochs) == len(ages)
     # insert the age of the subjects into the epochs events as description
     # this is where braindecode expects them
@@ -65,7 +118,7 @@ def create_windows_ds(fnames, ages):
     )
     # TODO: set targets here?
     # windows_ds.set_description({'target': ages})
-    return windows_ds, window_sizes[0], n_channels[0], window_map
+    return windows_ds, window_sizes[0], n_channels[0]
 
 
 def create_model(model_name, window_size, n_channels, seed):
@@ -132,63 +185,6 @@ def create_model(model_name, window_size, n_channels, seed):
     if cuda:
         model.cuda()
     return model, lr, weight_decay
-
-
-def create_data_split(windows_ds, cv, fold, window_map):
-    """Split the dataset into train and validation following cv and return data
-    with respect to specified fold.
-
-    Parameters
-    ----------
-    windows_ds: braindecode.datasets.BaseConcatDataset
-        The dataset to be split into train and valid.
-    cv: sklearn.model_selection.KFold
-        A scikit-learn object to generate splits (e.g. KFold).
-    fold: int
-        The id of the fold to be used in model training.
-    window_map:
-
-    Returns
-    -------
-    train_set: braindecode.datasets.BaseConcatDataset
-        The training set.
-    valid_set: braindecode.datasets.BaseConcatDataset
-        The validation set.
-    """
-    # TODO: there might be a better way to perform cv. check out skorch
-    # we already need split data to initialize the EEGRegressor, since we want
-    # to give it a predefined validation set.
-    # therefore, use the input arguments cv and fold to determine the split
-    # ids here and split the data accordingly
-    example_ids = np.arange(len(windows_ds))
-    print('example_ids', example_ids)
-    for fold_i, (train_is, valid_is) in enumerate(cv.split(example_ids)):
-        if fold_i == fold:
-            break
-    # the following is only valid because we are doing trialwise decoding
-    # which means that every compute window represents exactly one trial. if
-    # this was not the case, so if we used a window_size different from trial
-    # length in create_windows_ds, splitting here could cause that windows of
-    # a single trial end up in both train and valid set.
-    train_set = windows_ds.split(by=train_is)['0']
-    valid_set = windows_ds.split(by=valid_is)['0']
-    # add target transform to scale ages to zero mean, unit variance
-
-    """
-    TODO:
-    print("metadata ages", windows_ds.get_metadata()['target'].values)
-    print("ages", windows_ds.get_metadata()[
-        'target', np.array(window_map)[train_is]].values)
-
-    def scale_age(age, mean_train_age=np.mean(train_ages),
-                  std_train_age=np.std(train_ages)):
-        age = (age - mean_train_age) / std_train_age
-        return age
-
-    train_set.target_transform = scale_age
-    valid_set.target_transform = scale_age
-    """
-    return train_set, valid_set
 
 
 def create_estimator(
@@ -297,15 +293,17 @@ def get_X_y_model(
         An estimator holding a braindecode model and implementing fit /
         transform.
     """
-    windows_ds, n_channels, window_size, window_map = create_windows_ds(
+    train_fnames, train_ages, valid_fnames, valid_ages = create_data_split(
         fnames=fnames,
-        ages=ages,
-    )
-    train_set, valid_set = create_data_split(
-        windows_ds=windows_ds,
         cv=cv,
         fold=fold,
-        window_map=window_map,
+        ages=ages,
+    )
+    train_set, valid_set, window_size = create_datasets(
+        train_fnames=train_fnames,
+        train_ages=train_ages,
+        valid_fnames=valid_fnames,
+        valid_ages=valid_ages,
     )
     return create_model_and_data_split(
         model_name=model_name,

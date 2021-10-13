@@ -18,11 +18,22 @@ proc_log = pd.read_csv(deriv_root / 'autoreject_log.csv')
 good_subjects = proc_log.query('ok == "OK"').subject
 good_subjects
 
+frequency_bands = {
+    "low": (0.1, 1),
+    "delta": (1, 4),
+    "theta": (4.0, 8.0),
+    "alpha": (8.0, 15.0),
+    "beta_low": (15.0, 26.0),
+    "beta_mid": (26.0, 35.0),
+    "beta_high": (35.0, 49)
+}
+
 
 def compute_source_power(subject, deriv_root, fsaverage_subject_dir,
-                         subjects_dir, session='rest', datatype='meg'):
+                         features, subjects_dir, session='rest',
+                         datatype='meg'):
 
-    # Compute the source estimate
+    # Prepare source estimate
     bids_path = BIDSPath(subject=subject,
                          session=session,
                          task=session,
@@ -32,28 +43,38 @@ def compute_source_power(subject, deriv_root, fsaverage_subject_dir,
                          check=False)
     fname_info = bids_path.copy().update(processing='clean',
                                          suffix='epo')
-    fname_cov = bids_path.copy().update(suffix='cov')
     fname_inv = bids_path.copy().update(suffix='inv')
-    info = mne.io.read_info(fname_info)
-    cov = mne.read_cov(fname_cov)
     inv = mne.minimum_norm.read_inverse_operator(fname_inv)
-    stc = apply_inverse_cov(cov, info, inv,
-                            nave=1,
-                            method="dSPM")
-
-    # Compute label time series
+    info = mne.io.read_info(fname_info)
+    covs = features['sub-' + subject]['covs']
+    
+    # Prepare label time series
     labels = mne.read_labels_from_annot('fsaverage', 'aparc_sub',
                                         subjects_dir=fsaverage_subject_dir)
     labels = mne.morph_labels(labels,
-                              subject_from='fsaverage',
-                              subject_to=subject,
-                              subjects_dir=subjects_dir)
+                                subject_from='fsaverage',
+                                subject_to=subject,
+                                subjects_dir=subjects_dir)
     labels = [ll for ll in labels if 'unknown' not in ll.name]
-    label_power = mne.extract_label_time_course(stc,
-                                                labels,
-                                                inv['src'],
-                                                mode="mean")
-    result = dict(power=label_power)
+    
+    # for each frequency band
+    result = dict()
+    freq_keys = frequency_bands.keys()
+    for i in range(covs.shape[0]):
+        cov = mne.Covariance(data=covs[i, :, :],
+                             names=info['ch_names'],
+                             bads=info['bads'],
+                             projs=info['projs'],
+                             nfree=0)  # nfree ?
+        stc = apply_inverse_cov(cov, info, inv,
+                                nave=1,
+                                method="dSPM")
+
+        label_power = mne.extract_label_time_course(stc,
+                                                    labels,
+                                                    inv['src'],
+                                                    mode="mean")
+        result[freq_keys[i]] = label_power
 
     return result
 
@@ -64,10 +85,11 @@ if DEBUG:
     N_JOBS = 1
     good_subjects = good_subjects[:1]
 
+features = mne.externals.h5io.read_hdf5(deriv_root / f'features_rest.h5')
 out = Parallel(n_jobs=N_JOBS)(
     delayed(compute_source_power)(subject=subject[4:], deriv_root=deriv_root,
                                   fsaverage_subject_dir=fsaverage_subject_dir,
-                                  subjects_dir=subjects_dir)
+                                  features=features, subjects_dir=subjects_dir)
     for subject in good_subjects)
 
 mne.externals.h5io.write_hdf5(

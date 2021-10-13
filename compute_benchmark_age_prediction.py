@@ -20,24 +20,36 @@ from sklearn.model_selection import KFold
 import coffeine
 DATASETS = ['chbp', 'lemon', 'tuab', 'camcan']
 BENCHMARKS = ['dummy', 'filterbank-riemann']
-
 parser = argparse.ArgumentParser(description='Compute features.')
 parser.add_argument(
     '-d', '--dataset',
+    default=None,
     nargs='+',
     help='the dataset for which features should be computed')
 parser.add_argument(
     '-b', '--benchmark',
+    default=None,
     nargs='+', help='Type of features to compute')
+parser.add_argument(
+    '--n_jobs', type=int, default=1,
+    help='number of parallel processes to use (default: 1)')
+
 parsed = parser.parse_args()
 datasets = parsed.dataset
 benchmarks = parsed.benchmark
+N_JOBS = parsed.n_jobs
+if datasets is None:
+    datasets = list(DATASETS)
+if benchmarks is None:
+    benchmarks = list(BENCHMARKS)
 tasks = [(ds, bs) for ds in datasets for bs in benchmarks]
 for dataset, benchmark in tasks:
     if dataset not in DATASETS:
         raise ValueError(f"The dataset '{dataset}' passed is unkonwn")
     if benchmark not in BENCHMARKS:
         raise ValueError(f"The benchmark '{benchmark}' passed is unkonwn")
+print(f"Running benchmarks: {', '.join(benchmarks)}")
+print(f"Datasets: {', '.join(datasets)}")
 
 config_map = {'chbp': "config_chbp_eeg",
               'lemon': "config_lemon_eeg",
@@ -59,6 +71,7 @@ bench_config = {  # put other benchmark related config here
 }
 
 # %% get age
+
 
 def load_benchmark_data(dataset, benchmark, condition=None):
     """Load the input features and outcome vectors for a given benchmark
@@ -86,7 +99,8 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         is returned.  
     """
     if dataset not in config_map:
-        raise ValueError(f"We don't know the dataset '{dataset}' you requested.")
+        raise ValueError(
+            f"We don't know the dataset '{dataset}' you requested.")
 
     cfg = importlib.import_module(config_map[dataset])
     bids_root = cfg.bids_root
@@ -108,7 +122,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
     feature_log = f'feature_{condition_}-log.csv'
     proc_log = pd.read_csv(deriv_root / feature_log)
     good_subjects = proc_log.query('ok == "OK"').subject
-            
+
     df_subjects = df_subjects.loc[good_subjects]
     X, y, model = None, None, None
     if benchmark == 'filterbank-riemann':
@@ -142,6 +156,8 @@ def load_benchmark_data(dataset, benchmark, condition=None):
     return X, y, model
 
 # %% Run CV
+
+
 def run_benchmark_cv(benchmark, dataset):
     X, y, model = load_benchmark_data(
         dataset=dataset, benchmark=benchmark)
@@ -149,7 +165,8 @@ def run_benchmark_cv(benchmark, dataset):
     results = list()
     for metric in ('neg_mean_absolute_error', 'r2'):
         start = timer()
-        scores = cross_val_score(model, X, y, cv=cv, scoring=metric)
+        scores = cross_val_score(model, X, y, cv=cv, scoring=metric,
+                                 n_jobs=N_JOBS)
         end = timer()
         time_elapsed = end - start
 
@@ -168,11 +185,10 @@ def run_benchmark_cv(benchmark, dataset):
     results = pd.concat(results)
     return results
 
+
 #%% run benchmarks
 for dataset, benchmark in tasks:
-    print(f"running '{benchmark}' on {dataset} data")
+    print(f"Now running '{benchmark}' on '{dataset}' data")
     results_df = run_benchmark_cv(benchmark, dataset)
     results_df.to_csv(
         f"./results/benchmark-{benchmark}_dataset-{dataset}.csv")
-
-# %%

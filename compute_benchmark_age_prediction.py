@@ -124,6 +124,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
     good_subjects = proc_log.query('ok == "OK"').subject
 
     df_subjects = df_subjects.loc[good_subjects]
+    print(f"Found data from {len(good_subjects)} subjects")
     X, y, model = None, None, None
     if benchmark == 'filterbank-riemann':
         frequency_bands = bench_config['filter_bank']['frequency_bands']
@@ -135,10 +136,11 @@ def load_benchmark_data(dataset, benchmark, condition=None):
             {band: list(covs[:, ii]) for ii, band in
              enumerate(frequency_bands)})
         y = df_subjects.age.values
-
+        rank = 65 if dataset == 'camcan' else len(analyze_channels) -1
         filter_bank_transformer = coffeine.make_filter_bank_transformer(
             names=list(frequency_bands),
-            method='riemann'
+            method='riemann',
+            projection_params=dict(scale='auto', n_compo=rank)
         )
         model = make_pipeline(
             filter_bank_transformer, StandardScaler(),

@@ -33,7 +33,7 @@ cfg = importlib.import_module(config_map[dataset])
 bids_root = cfg.bids_root
 deriv_root = cfg.deriv_root
 task = cfg.task
-data_type = cfg.datatype
+data_type = cfg.data_type
 N_JOBS = cfg.N_JOBS
 DEBUG = False
 

@@ -57,7 +57,7 @@ config_map = {'chbp': "config_chbp_eeg",
               'camcan': "config_camcan_meg"}
 
 bench_config = {  # put other benchmark related config here
-    'filter_bank': {  # it can go in a seprate file later
+    'filterbank-riemann': {  # it can go in a seprate file later
         'frequency_bands': {
             "low": (0.1, 1),
             "delta": (1, 4),
@@ -66,7 +66,8 @@ bench_config = {  # put other benchmark related config here
             "beta_low": (15.0, 26.0),
             "beta_mid": (26.0, 35.0),
             "beta_high": (35.0, 49)
-        }
+        },
+    'feature_map': 'fb_covs'
     }
 }
 
@@ -119,15 +120,18 @@ def load_benchmark_data(dataset, benchmark, condition=None):
     df_subjects = pd.read_csv(bids_root / "participants.tsv", sep='\t')
     df_subjects = df_subjects.set_index('participant_id')
     # now we read in the processing log to see for which participants we have EEG
-    feature_log = f'feature_{condition_}-log.csv'
+
+    bench_cfg = bench_config['filterbank-riemann']
+    feature_label = bench_cfg['feature_map']
+    feature_log = f'feature_{feature_label}_{condition_}-log.csv'
     proc_log = pd.read_csv(deriv_root / feature_log)
     good_subjects = proc_log.query('ok == "OK"').subject
-
     df_subjects = df_subjects.loc[good_subjects]
     print(f"Found data from {len(good_subjects)} subjects")
+
     X, y, model = None, None, None
     if benchmark == 'filterbank-riemann':
-        frequency_bands = bench_config['filter_bank']['frequency_bands']
+        frequency_bands = bench_cfg['frequency_bands']
         features = mne.externals.h5io.read_hdf5(
             deriv_root / f'features_{condition_}.h5')
         covs = [features[sub]['covs'] for sub in df_subjects.index]
@@ -136,7 +140,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
             {band: list(covs[:, ii]) for ii, band in
              enumerate(frequency_bands)})
         y = df_subjects.age.values
-        rank = 65 if dataset == 'camcan' else len(analyze_channels) -1
+        rank = 65 if dataset == 'camcan' else len(analyze_channels)
         filter_bank_transformer = coffeine.make_filter_bank_transformer(
             names=list(frequency_bands),
             method='riemann',

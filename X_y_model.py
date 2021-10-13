@@ -2,7 +2,7 @@ import mne
 import torch
 import numpy as np
 from sklearn.model_selection import KFold
-from skorch.callbacks import LRScheduler
+from skorch.callbacks import LRScheduler, BatchScoring
 from skorch.helper import predefined_split
 
 from braindecode.util import set_random_seeds
@@ -12,31 +12,39 @@ from braindecode import EEGRegressor
 
 
 def create_data_split(fnames, ages, cv, fold):
-    """Split the dataset into train and validation following cv and return data
-    with respect to specified fold.
+    """Split the fnames into train and validation following cv and return with
+     respect to specified fold.
 
     Parameters
     ----------
-    windows_ds: braindecode.datasets.BaseConcatDataset
-        The dataset to be split into train and valid.
+    fnames: list
+        The fnames to be split into train and valid.
+    ages: list
+        The subject ages corresponding to the recordings in the .fif files.
     cv: sklearn.model_selection.KFold
         A scikit-learn object to generate splits (e.g. KFold).
     fold: int
         The id of the fold to be used in model training.
-    window_map:
 
     Returns
     -------
-    train_set: braindecode.datasets.BaseConcatDataset
-        The training set.
-    valid_set: braindecode.datasets.BaseConcatDataset
-        The validation set.
+    train_fnames: list
+        A list of .fif files to be used for training.
+    train_ages: numpy.ndarray
+        The subject ages corresponding to the recordings in the training .fif
+        files.
+    valid_fnames: list
+        A list of .fif files to be used for validation.
+    valid_ages: numpy.ndarray
+        The subject ages corresponding to the recordings in the validation .fif
+        files.
     """
-    example_ids = np.arange(len(fnames))
-    print('example_ids', example_ids)
-    for fold_i, (train_is, valid_is) in enumerate(cv.split(example_ids)):
+    # split the fnames into train and valid with given cv strategy until
+    # desired fold
+    for fold_i, (train_is, valid_is) in enumerate(cv.split(fnames)):
         if fold_i == fold:
             break
+    # split fnames and ages into train and valid
     train_fnames = [fnames[i] for i in train_is]
     train_ages = [ages[i] for i in train_is]
     valid_fnames = [fnames[i] for i in valid_is]
@@ -44,7 +52,36 @@ def create_data_split(fnames, ages, cv, fold):
     return train_fnames, train_ages, valid_fnames, valid_ages
 
 
-def create_datasets(train_fnames, train_ages, valid_fnames, valid_ages):
+def create_datasets(
+        train_fnames, train_ages, valid_fnames, valid_ages, scale_ages=True,
+):
+    """Load epochs data stored as .fif files. Expects all .fif files to have
+    epochs of equal length and to have equal channels.
+
+    Parameters
+    ----------
+    train_fnames: list
+        A list of .fif files to be used for training.
+    train_ages: numpy.ndarray
+        The subject ages corresponding to the recordings in the training .fif
+        files.
+    valid_fnames: list
+        A list of .fif files to be used for validation.
+    valid_ages: numpy.ndarray
+        The subject ages corresponding to the recordings in the validation .fif
+        files.
+
+    Returns
+    -------
+    train_set: braindecode.datasets.BaseConcatDataset
+        The training set.
+    valid_set: braindecode.datasets.BaseConcatDataset
+        The validation set.
+    window_size: int
+        The size of a single individual epoch.
+    n_channels: int
+        The number of channels in the epochs.
+    """
     train_set, n_channels, window_size = create_dataset(
         fnames=train_fnames,
         ages=train_ages,
@@ -53,20 +90,24 @@ def create_datasets(train_fnames, train_ages, valid_fnames, valid_ages):
         fnames=valid_fnames,
         ages=valid_ages,
     )
+    # optionally, scale the ages to zero mean, unit variance
+    # therefore, compute the mean and std on train ages
+    # and set a target transform to both train and validation set
+    if scale_ages:
+        mean_train_age = np.mean(train_ages)
+        std_train_age = np.std(train_ages)
 
-    mean_train_age = np.mean(train_ages)
-    std_train_age = np.std(train_ages)
+        # define a target transform that first subtracts mean train age from
+        # given age and then devides by std of train ages
+        def scale_age(age):
+            age = (age - mean_train_age) / std_train_age
+            return age
 
-    def scale_age(age):
-        age = (age - mean_train_age) / std_train_age
-        return age
-
-    train_set.target_transform = scale_age
-    valid_set.target_transform = scale_age
+        train_set.target_transform = scale_age
+        valid_set.target_transform = scale_age
     return train_set, valid_set, n_channels, window_size
 
 
-# if mne logging is enabled it dramatically slows down this function
 def create_dataset(fnames, ages):
     """Load epochs data stored as .fif files. Expects all .fif files to have
     epochs of equal length and to have equal channels.
@@ -86,8 +127,6 @@ def create_dataset(fnames, ages):
         The size of a single individual epoch.
     n_channels: int
         The number of channels in the epochs.
-    window_map: list
-        TODO
     """
     # read all the epochs fif files
     epochs = [mne.read_epochs(fname, preload=False) for fname in fnames]
@@ -110,6 +149,7 @@ def create_dataset(fnames, ages):
     # trial. it could be beneficial to use an actual window_size smaller then
     # the trial length and to run cropped decoding (requires adjustment of the
     # loss computation etc).
+    # if mne logging is enabled, it dramatically slows down the call below
     windows_ds = create_from_mne_epochs(
         list_of_epochs=epochs,
         window_size_samples=window_sizes[0],
@@ -188,30 +228,27 @@ def create_model(model_name, window_size, n_channels, seed):
 
 
 def create_estimator(
-        model_name, train_set, valid_set, n_channels, window_size, n_epochs,
-        batch_size, seed,
+        model, train_set, valid_set, n_epochs, batch_size, lr, weight_decay,
 ):
     """Create am estimator (EEGRegressor) that implements fit/transform.
 
     Parameters
     ----------
-    model_name: str
-        The name of the model (either 'shallow' or 'deep').
+    model: braindecode.models.Deep4Net or braindecode.models.ShallowFBCSPNet
+        A braindecode convolutional neural network.
     train_set: braindecode.datasets.BaseConcatDataset
         The training set.
     valid_set: braindecode.datasets.BaseConcatDataset
         The validation set.
-    n_channels: int
-        The number of input data channels.
-    window_size: int
-        The length of the input data time series in samples.
     n_epochs: int
         The number of training epochs used in model training (required to
         in the creation of a learning rate scheduler).
     batch_size: int
         The size of training batches.
-    seed: int
-        The seed to be used to initialize the network.
+    lr: float
+        The learning rate to be used in network training.
+    weight_decay: float
+        The weight decay to be used in network training.
 
     Returns
     -------
@@ -224,15 +261,8 @@ def create_estimator(
         An estimator holding a braindecode model and implementing fit /
         transform.
     """
-    model, lr, weight_decay = create_model(
-        model_name=model_name,
-        window_size=window_size,
-        n_channels=n_channels,
-        seed=seed,
-    )
-    # using BatchScoring over strings did not enable usage of sklearn functions
-    # like cross_val_score with the EEGRegressor
-    from skorch.callbacks import BatchScoring
+    # TODO: using BatchScoring over strings did not enable usage of sklearn
+    #  functions like cross_val_score with the EEGRegressor
     clf = EEGRegressor(
         model,
         criterion=torch.nn.L1Loss,  # optimize MAE
@@ -244,8 +274,10 @@ def create_estimator(
         batch_size=batch_size,
         callbacks=[
             ("R2", BatchScoring('r2', lower_is_better=False)),
-            #  ("MAE", BatchScoring("neg_mean_absolute_error", lower_is_better=False)),
-            ("lr_scheduler", LRScheduler('CosineAnnealingLR', T_max=n_epochs-1)),
+            ("MAE", BatchScoring("neg_mean_absolute_error",
+                                 lower_is_better=False)),
+            ("lr_scheduler", LRScheduler('CosineAnnealingLR',
+                                         T_max=n_epochs-1)),
         ],
         device='cuda' if torch.cuda.is_available() else 'cpu',
     )
@@ -258,7 +290,7 @@ def create_estimator(
 
 
 def get_X_y_model(
-        fnames, model_name, ages, cv, fold, n_epochs=35, batch_size=64,
+        fnames, ages, model_name, cv, fold, n_epochs=35, batch_size=64,
         seed=20211011,
 ):
     """Create am estimator (EEGRegressor) that implements fit/transform.
@@ -267,10 +299,10 @@ def get_X_y_model(
     ----------
     fnames: list
         A list of .fif files to be used.
-    model_name: str
-        The name of the model (either 'shallow' or 'deep').
     ages: numpy.ndarray
         The subject ages corresponding to the recordings in the .fif files.
+    model_name: str
+        The name of the model (either 'shallow' or 'deep').
     cv: sklearn.model_selection.KFold
         A scikit-learn object to generate splits (e.g. KFold).
     fold: int
@@ -299,19 +331,24 @@ def get_X_y_model(
         fold=fold,
         ages=ages,
     )
-    train_set, valid_set, window_size = create_datasets(
+    train_set, valid_set, window_size, n_channels = create_datasets(
         train_fnames=train_fnames,
         train_ages=train_ages,
         valid_fnames=valid_fnames,
         valid_ages=valid_ages,
     )
-    return create_model_and_data_split(
+    model, lr, weight_decay = create_model(
         model_name=model_name,
+        window_size=window_size,
+        n_channels=n_channels,
+        seed=seed,
+    )
+    return create_estimator(
+        model=model,
         train_set=train_set,
         valid_set=valid_set,
-        n_channels=n_channels,
-        window_size=window_size,
         n_epochs=n_epochs,
         batch_size=batch_size,
-        seed=seed,
+        lr=lr,
+        weight_decay=weight_decay,
     )

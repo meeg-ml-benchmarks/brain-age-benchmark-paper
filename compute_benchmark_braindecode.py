@@ -58,7 +58,7 @@ if dataset == 'chbp':
     # Restrict to good subjects
     df_demographics = df_demographics.loc[good_subjects]
     subjects = df_demographics.index
-    age = df_demographics.Age.values
+    ages = df_demographics.Age.values
     handcrafted = False
 
     kind = "eyes-pooled"
@@ -66,7 +66,7 @@ if dataset == 'chbp':
 elif dataset in ('tuab', 'mmd'):
     kind = 'rest'
     subjects = subjects_df['participant_id']
-    age = subjects_df['age']
+    ages = subjects_df['age']
     handcrafted = False
 
 else:
@@ -76,46 +76,31 @@ else:
 # ------------------------------------------------------------------------------
 # section below is modified to work with braindecode models
 
-# %% Load fif files with preload=False, set age as target, and create dataset
-from X_y_model import create_windows_ds
-windows_ds, window_size, n_channels = create_windows_ds(fnames, age)
+# TODO: implement missing link between above and below
 
-from X_y_model import create_model_and_data_split
-n_folds = 10
+# code below expects to get a list of .fif file names 'fnames' pointing to
+# epoched data as well as a list of ages 'ages'
+from X_y_model import get_X_y_model
+n_folds = 5
 n_epochs = 3
 batch_size = 64
 seed = 20211012
-metrics = ('neg_mean_absolute_error', 'r2')
+metrics = ['neg_mean_absolute_error', 'r2']
+results = []
 for model_name in ['shallow', 'deep']:
-    scores = {m: [] for m in metrics}
     for fold_i in range(n_folds):
         cv = KFold(n_splits=n_folds, shuffle=True, random_state=42)
-        X, y, model = create_model_and_data_split(
+        X, y, model = get_X_y_model(
+            fnames=fnames,
             model_name=model_name,
-            windows_ds=windows_ds,
-            n_channels=n_channels,
-            window_size=window_size,
-            n_epochs=n_epochs,
-            fold=fold_i,
+            ages=ages,
             cv=cv,
-            seed=seed,
+            fold=fold_i,
+            n_epochs=n_epochs,
             batch_size=batch_size,
+            seed=seed,
         )
         model.fit(X=X, y=y, epochs=n_epochs)
-        for m in metrics:
-            scores[m].append(model.history[-1, ['_'.join(['valid', m])]][0])
-
-
-# TODO: re-build expected dataframe
-"""
-        print(f'{score_key}({name}) = {scores.mean()}')
-        results.append(pd.DataFrame(this_result))
-
-results = pd.concat(results)
-
-# %% Plot some results
-sns.barplot(x='score', y='metric', hue='model',
-            data=results.query("metric == 'MAE'"))
-plt.savefig('results_braindecode_mae.pdf')
-plt.show()
-"""
+        scores = [model.history[-1, m] for m in metrics]
+        results.append([model_name] + scores)
+results = pd.DataFrame(results, columns=[model_name]+metrics)

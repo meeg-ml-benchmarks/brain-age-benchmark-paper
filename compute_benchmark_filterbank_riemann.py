@@ -72,12 +72,6 @@ def load_benchmark_data(dataset, benchmark, condition=None):
     task = cfg.task
     analyze_channels = cfg.analyze_channels
 
-    df_subjects = pd.read_csv(bids_root / "participants.tsv", sep='\t')
-    df_subjects = df_subjects.set_index('participant_id')
-    # now we read in the processing log to see for which participants we have EEG
-    proc_log = pd.read_csv(deriv_root / 'autoreject_log.csv')
-    good_subjects = proc_log.query('ok == "OK"').subject
-
     # handle default for condition.
     if condition is None:
         if dataset in ('chbp', 'lemon'):
@@ -86,6 +80,12 @@ def load_benchmark_data(dataset, benchmark, condition=None):
             condition_ = 'rest'
     else:
         condition_ = condition
+    df_subjects = pd.read_csv(bids_root / "participants.tsv", sep='\t')
+    df_subjects = df_subjects.set_index('participant_id')
+    # now we read in the processing log to see for which participants we have EEG
+    feature_log = f'feature_{condition_}-log.csv'
+    proc_log = pd.read_csv(deriv_root / feature_log)
+    good_subjects = proc_log.query('ok == "OK"').subject
             
     df_subjects = df_subjects.loc[good_subjects]
     X, y, model = None, None, None
@@ -116,8 +116,12 @@ def load_benchmark_data(dataset, benchmark, condition=None):
     return X, y, model
 
 
+#%%  quick test that loading works
+for ds in ('tuab', 'camcan', 'lemon', 'chbp'):
+    print(ds)
+    X, y, model = load_benchmark_data(dataset=ds, benchmark='filterbank-riemann')
+
 #%%
-X, y, model = load_benchmark_data(dataset='tuab', benchmark='filterbank-riemann')
 
 dummy_model = DummyRegressor(strategy="median")
 

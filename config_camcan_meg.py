@@ -16,12 +16,12 @@ bids_root = pathlib.Path(
 
 deriv_root = pathlib.Path('/storage/store3/work/camcan-bids/derivatives')
 
-subjects_dir = '/storage/store/data/camcan-mne/freesurfer'
+subjects_dir = pathlib.Path('/storage/store/data/camcan-mne/freesurfer')
 
-source_info_update = {'processing': 'clean',
+source_info_path_update = {'processing': 'clean',
                       'suffix': 'epo'}
 
-inverse_targets = None
+inverse_targets = []
 
 process_er = True
 noise_cov = 'emptyroom'

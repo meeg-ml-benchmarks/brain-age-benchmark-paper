@@ -1,4 +1,5 @@
 # %% imports
+import argparse
 import importlib
 from timeit import default_timer as timer
 import numpy as np
@@ -17,6 +18,26 @@ from sklearn.pipeline import make_pipeline
 from sklearn.model_selection import KFold
 
 import coffeine
+DATASETS = ['chbp', 'lemon', 'tuab', 'camcan']
+BENCHMARKS = ['dummy', 'filterbank-riemann']
+
+parser = argparse.ArgumentParser(description='Compute features.')
+parser.add_argument(
+    '-d', '--dataset',
+    nargs='+',
+    help='the dataset for which features should be computed')
+parser.add_argument(
+    '-b', '--benchmark',
+    nargs='+', help='Type of features to compute')
+parsed = parser.parse_args()
+datasets = parsed.dataset
+benchmarks = parsed.benchmark
+tasks = [(ds, bs) for ds in datasets for bs in benchmarks]
+for dataset, benchmark in tasks:
+    if dataset not in DATASETS:
+        raise ValueError(f"The dataset '{dataset}' passed is unkonwn")
+    if benchmark not in BENCHMARKS:
+        raise ValueError(f"The benchmark '{benchmark}' passed is unkonwn")
 
 config_map = {'chbp': "config_chbp_eeg",
               'lemon': "config_lemon_eeg",
@@ -119,12 +140,6 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         raise NotImplementedError('not yet available')
 
     return X, y, model
-
-
-#%%  quick test that loading works
-datasets = ('tuab', 'camcan', 'lemon', 'chbp')
-benchmarks = ('filterbank-riemann', 'dummy')
-tasks = [(ds, bs) for ds in datasets for bs in benchmarks]
 
 # %% Run CV
 def run_benchmark_cv(benchmark, dataset):

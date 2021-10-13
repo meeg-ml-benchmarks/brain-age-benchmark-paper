@@ -53,14 +53,14 @@ def load_benchmark_data(dataset, benchmark, condition=None):
     
     Returns
     -------
-    X: numpy.ndarray or pandas.DataFrame of shape(n_subjects, n_predictors)
+    X: numpy.ndarray or pandas.DataFrame of shape (n_subjects, n_predictors)
         The predictors. In the case of the filterbank models, columns can
         represent covariances.
-    y: the outcome vector of shape(n_subjects)
-        The age used as prediction target.
+    y: array, shape (n_subjects,)
+        The outcome vector containing age used as prediction target.
     model: object
-        The model to matching the benachmark-specific features.
-        For `filter_bank` and `hand_crafted`, a scikit-learn estimator pipleine
+        The model to matching the benchmark-specific features.
+        For `filter_bank` and `hand_crafted`, a scikit-learn estimator pipeline
         is returned.  
     """
     if dataset not in config_map:

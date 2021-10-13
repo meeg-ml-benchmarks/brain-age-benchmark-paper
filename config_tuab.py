@@ -21,7 +21,7 @@ conditions = []
 
 sessions = ["001"]
 
-datatype = "eeg"
+data_type = "eeg"
 ch_types = ["eeg"]
 
 l_freq = 0.1

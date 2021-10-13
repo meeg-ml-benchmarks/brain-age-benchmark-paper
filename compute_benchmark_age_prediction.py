@@ -11,7 +11,6 @@ import mne
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import RidgeCV
 from sklearn.model_selection import cross_val_score
-# from sklearn.model_selection import cross_val_predict
 from sklearn.preprocessing import StandardScaler
 from sklearn.dummy import DummyRegressor
 from sklearn.pipeline import make_pipeline
@@ -133,14 +132,15 @@ def load_benchmark_data(dataset, benchmark, condition=None):
     if benchmark == 'filterbank-riemann':
         frequency_bands = bench_cfg['frequency_bands']
         features = mne.externals.h5io.read_hdf5(
-            deriv_root / f'features_{condition_}.h5')
+            deriv_root / f'features_{feature_label}_{condition_}.h5')
         covs = [features[sub]['covs'] for sub in df_subjects.index]
         covs = np.array(covs)
         X = pd.DataFrame(
             {band: list(covs[:, ii]) for ii, band in
              enumerate(frequency_bands)})
         y = df_subjects.age.values
-        rank = 65 if dataset == 'camcan' else len(analyze_channels)
+        rank = 65 if dataset == 'camcan' else len(analyze_channels) - 1
+
         filter_bank_transformer = coffeine.make_filter_bank_transformer(
             names=list(frequency_bands),
             method='riemann',

@@ -155,9 +155,9 @@ def run_benchmark_cv(benchmark, dataset):
 
 #%% run benchmarks
 for dataset, benchmark in tasks:
-    print("running '{benchmark}' on {dataset} data")
+    print(f"running '{benchmark}' on {dataset} data")
     results_df = run_benchmark_cv(benchmark, dataset)
     results_df.to_csv(
-        "./results/benchmark-{benchmark}_dataset-{dataset}.csv")
+        f"./results/benchmark-{benchmark}_dataset-{dataset}.csv")
 
 # %%

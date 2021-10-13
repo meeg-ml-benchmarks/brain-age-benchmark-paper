@@ -1,5 +1,6 @@
 # %% imports
 import importlib
+from timeit import default_timer as timer
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -107,6 +108,10 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         model = make_pipeline(
             filter_bank_transformer, StandardScaler(),
             RidgeCV(alphas=np.logspace(-5, 10, 100)))
+    if benchmark == 'dummy':
+        y = df_subjects.age.values
+        X = np.zeros(shape=(len(y), 1))
+        model = DummyRegressor(strategy="mean")
 
     elif benchmark == 'hand_crafted':
         raise NotImplementedError('not yet available')
@@ -117,27 +122,22 @@ def load_benchmark_data(dataset, benchmark, condition=None):
 
 
 #%%  quick test that loading works
-for ds in ('tuab', 'camcan', 'lemon', 'chbp'):
-    print(ds)
-    X, y, model = load_benchmark_data(dataset=ds, benchmark='filterbank-riemann')
-
-#%%
-
-dummy_model = DummyRegressor(strategy="median")
-
-models = {
-    "filter_bank_model": model,
-    "dummy_model": dummy_model
-}
+datasets = ('tuab', 'camcan', 'lemon', 'chbp')
+benchmarks = ('filterbank-riemann', 'dummy')
+tasks = [(ds, bs) for ds in datasets for bs in benchmarks]
 
 # %% Run CV
-cv = KFold(n_splits=10, shuffle=True, random_state=42)
-results = list()
-for metric in ('neg_mean_absolute_error', 'r2'):
-    for name, model in models.items():
-        scores = cross_val_score(
-            model, X_df, y, cv=cv, scoring=metric
-        )
+def run_benchmark_cv(benchmark, dataset):
+    X, y, model = load_benchmark_data(
+        dataset=dataset, benchmark=benchmark)
+    cv = KFold(n_splits=10, shuffle=True, random_state=42)
+    results = list()
+    for metric in ('neg_mean_absolute_error', 'r2'):
+        start = timer()
+        scores = cross_val_score(model, X, y, cv=cv, scoring=metric)
+        end = timer()
+        time_elapsed = end - start
+
         score_key = metric
         if metric == 'neg_mean_absolute_error':
             score_key = "MAE"
@@ -145,9 +145,19 @@ for metric in ('neg_mean_absolute_error', 'r2'):
 
         this_result = {"metric": score_key,
                        "score": scores,
-                       "model": name}
-
-        print(f'{score_key}({name}) = {scores.mean()}')
+                       "benchmark": benchmark,
+                       "dataset": dataset,
+                       "time": time_elapsed}
+        print(f'{score_key}({benchmark}, {dataset}) = {scores.mean()}')
         results.append(pd.DataFrame(this_result))
+    results = pd.concat(results)
+    return results
 
-results = pd.concat(results)
+#%% run benchmarks
+for dataset, benchmark in tasks:
+    print("running '{benchmark}' on {dataset} data")
+    results_df = run_benchmark_cv(benchmark, dataset)
+    results_df.to_csv(
+        "./results/benchmark-{benchmark}_dataset-{dataset}.csv")
+
+# %%

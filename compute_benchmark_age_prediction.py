@@ -160,7 +160,6 @@ def load_benchmark_data(dataset, benchmark, condition=None):
     elif benchmark == 'handcrafted':
         features = mne.externals.h5io.read_hdf5(
             deriv_root / f'features_handcrafted_{condition_}.h5')
-        boom
         X = [features[sub]['feats'] for sub in df_subjects.index]
         y = df_subjects.age.values
         param_grid = {'max_depth': [4, 6, 8, 16, 32, None],

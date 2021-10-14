@@ -9,16 +9,19 @@ import seaborn as sns
 
 import mne
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import RidgeCV
+from sklearn.linear_model import RidgeCV    
 from sklearn.model_selection import cross_val_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.dummy import DummyRegressor
+from sklearn.preprocessing import FunctionTransformer
 from sklearn.pipeline import make_pipeline
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, GridSearchCV
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.impute import SimpleImputer
 
 import coffeine
 DATASETS = ['chbp', 'lemon', 'tuab', 'camcan']
-BENCHMARKS = ['dummy', 'filterbank-riemann']
+BENCHMARKS = ['dummy', 'filterbank-riemann', 'handcrafted']
 parser = argparse.ArgumentParser(description='Compute features.')
 parser.add_argument(
     '-d', '--dataset',
@@ -66,12 +69,16 @@ bench_config = {  # put other benchmark related config here
             "beta_mid": (26.0, 35.0),
             "beta_high": (35.0, 49)
         },
-    'feature_map': 'fb_covs'
-    }
+        'feature_map': 'fb_covs',
+    },
+    'handcrafted': {'feature_map': 'handcrafted'}
 }
 
 # %% get age
 
+def aggregate_features(X, func='mean', axis=0):
+    aggs = {'mean': np.nanmean, 'median': np.nanmedian}
+    return np.vstack([aggs[func](x, axis=axis, keepdims=True) for x in X])
 
 def load_benchmark_data(dataset, benchmark, condition=None):
     """Load the input features and outcome vectors for a given benchmark
@@ -120,7 +127,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
     df_subjects = df_subjects.set_index('participant_id')
     # now we read in the processing log to see for which participants we have EEG
 
-    bench_cfg = bench_config['filterbank-riemann']
+    bench_cfg = bench_config[benchmark]
     feature_label = bench_cfg['feature_map']
     feature_log = f'feature_{feature_label}_{condition_}-log.csv'
     proc_log = pd.read_csv(deriv_root / feature_log)
@@ -149,13 +156,36 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         model = make_pipeline(
             filter_bank_transformer, StandardScaler(),
             RidgeCV(alphas=np.logspace(-5, 10, 100)))
-    if benchmark == 'dummy':
+
+    elif benchmark == 'handcrafted':
+        features = mne.externals.h5io.read_hdf5(
+            deriv_root / f'features_handcrafted_{condition_}.h5')
+        boom
+        X = [features[sub]['feats'] for sub in df_subjects.index]
+        y = df_subjects.age.values
+        param_grid = {'max_depth': [4, 6, 8, 16, 32, None],
+                      'max_features': ['log2', 'sqrt', None]}
+        rf_reg = GridSearchCV(
+            RandomForestRegressor(n_estimators=1000,
+                                  random_state=42),
+            param_grid=param_grid,
+            scoring='neg_mean_absolute_error',
+            iid=False,
+            cv=5)
+        model = make_pipeline(
+            FunctionTransformer(aggregate_features, kw_args={'func': 'mean'}),
+            SimpleImputer(),
+            rf_reg
+        )
+
+    elif benchmark == 'source_power':
+        raise NotImplementedError('not yet available')
+
+    elif benchmark == 'dummy':
         y = df_subjects.age.values
         X = np.zeros(shape=(len(y), 1))
         model = DummyRegressor(strategy="mean")
 
-    elif benchmark == 'hand_crafted':
-        raise NotImplementedError('not yet available')
     elif benchmark == 'deep':
         raise NotImplementedError('not yet available')
 

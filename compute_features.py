@@ -135,7 +135,7 @@ def extract_handcrafted_feats(epochs, condition):
     features = extract_features(
         epochs[condition].get_data(), epochs.info['sfreq'], hc_selected_funcs,
         funcs_params=hc_func_params, n_jobs=1, ch_names=epochs.ch_names,
-        reorder_chs=True, return_as_df=False)
+        return_as_df=False)
     out = {'feats': features}
     return out
 

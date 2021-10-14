@@ -11,16 +11,41 @@ from braindecode.datasets import create_from_mne_epochs
 from braindecode import EEGRegressor
 
 
-def create_data_split(fnames, ages, cv, fold):
-    """Split the fnames into train and validation following cv and return with
-     respect to specified fold.
+# TODO: add n_jobs somewhere?
+
+
+def read_epochs(fnames):
+    """Read all epochs .fif files from given fnames. For every .fif file, count
+    how many epochs belong to it and return this as a nested list. We need this
+    information in the end to go from epoch to fif predictions.
 
     Parameters
     ----------
     fnames: list
-        The fnames to be split into train and valid.
-    ages: list
-        The subject ages corresponding to the recordings in the .fif files.
+        A list of .fif files.
+
+    Returns
+    -------
+    epochs: list
+        A list of mne.Epochs objects with preload=False.
+    epoch_to_fif: list
+        A nested list of same length as fnames, where each entry is a list that
+        has as many entries as there are epochs in the .fif file at the same
+        position in fnames. Required after prediction to go from epoch to .fif
+        predictions.
+    """
+    epochs = [mne.read_epochs(fname, preload=False) for fname in fnames]
+    epoch_to_fif = [len(e) * [i] for i, e in enumerate(epochs)]
+    return epochs, epoch_to_fif
+
+
+def get_split_ids(n_examples, cv, fold):
+    """Split n_examples to fold given strategy cv.
+
+    Parameters
+    ----------
+    n_examples: int
+        The number of examples in the dataset.
     cv: sklearn.model_selection.KFold
         A scikit-learn object to generate splits (e.g. KFold).
     fold: int
@@ -28,48 +53,61 @@ def create_data_split(fnames, ages, cv, fold):
 
     Returns
     -------
-    train_fnames: list
-        A list of .fif files to be used for training.
-    train_ages: numpy.ndarray
-        The subject ages corresponding to the recordings in the training .fif
-        files.
-    valid_fnames: list
-        A list of .fif files to be used for validation.
-    valid_ages: numpy.ndarray
-        The subject ages corresponding to the recordings in the validation .fif
-        files.
+    train_is: list
+        Integer ids of examples that belong to the train set.
+    valid_is: list
+        Integer ids of examples that belong to the valid set.
     """
-    # split the fnames into train and valid with given cv strategy until
+    # split n_examples into train and valid with given cv strategy until
     # desired fold
-    for fold_i, (train_is, valid_is) in enumerate(cv.split(fnames)):
+    for fold_i, (train_is, valid_is) in enumerate(
+            cv.split(list(range(n_examples)))):
         if fold_i == fold:
             break
-    # split fnames and ages into train and valid
-    train_fnames = [fnames[i] for i in train_is]
-    train_ages = [ages[i] for i in train_is]
-    valid_fnames = [fnames[i] for i in valid_is]
-    valid_ages = [ages[i] for i in valid_is]
-    return train_fnames, train_ages, valid_fnames, valid_ages
+    return train_is, valid_is
 
 
-def create_datasets(
-        train_fnames, train_ages, valid_fnames, valid_ages, scale_ages=True,
-):
+def split(to_split, train_is, valid_is):
+    """Split something into train and valid.
+
+    Parameters
+    ----------
+    to_split: array-like
+        A list of things to be split with respect to train_is and valid_is.
+
+    Returns
+    -------
+    train_split: list
+        Examples of to_split at position train_is.
+    valid_split: list
+        Examples of to_split at position valid_is.
+    """
+    train_split = [to_split[i] for i in train_is]
+    valid_split = [to_split[i] for i in valid_is]
+    return train_split, valid_split
+
+
+def create_datasets(epochs, ages, epoch_to_fif, train_is, valid_is, scale_ages):
     """Load epochs data stored as .fif files. Expects all .fif files to have
     epochs of equal length and to have equal channels.
 
     Parameters
     ----------
-    train_fnames: list
-        A list of .fif files to be used for training.
-    train_ages: numpy.ndarray
-        The subject ages corresponding to the recordings in the training .fif
-        files.
-    valid_fnames: list
-        A list of .fif files to be used for validation.
-    valid_ages: numpy.ndarray
-        The subject ages corresponding to the recordings in the validation .fif
-        files.
+    epochs: list
+        A list of mne.Epochs objects with preload=False.
+    ages: list
+        The subject ages corresponding to the recordings in the .fif files.
+    epoch_to_fif: list
+        A nested list of same length as fnames, where each entry is a list that
+        has as many entries as there are epochs in the .fif file at the same
+        position in fnames. Required after prediction to go from epoch to .fif
+        predictions.
+    train_is: list
+        Integer ids of examples that belong to the train set.
+    valid_is: list
+        Integer ids of examples that belong to the valid set.
+    scale_ages: bool
+        Whether to scale ages to zero mean unit variance.
 
     Returns
     -------
@@ -82,13 +120,22 @@ def create_datasets(
     n_channels: int
         The number of channels in the epochs.
     """
-    train_set, n_channels, window_size = create_dataset(
-        fnames=train_fnames,
+    epochs_train, epochs_valid = split(epochs, train_is, valid_is)
+    train_ages, valid_ages = split(ages, train_is, valid_is)
+    epoch_to_fif_train, epoch_to_fif_valid = split(
+        epoch_to_fif, train_is, valid_is)
+    # flatten the lists
+    epoch_to_fif_train = [j for i in epoch_to_fif_train for j in i]
+    epoch_to_fif_valid = [j for i in epoch_to_fif_valid for j in i]
+    train_set, window_size, n_channels = create_dataset(
+        epochs=epochs_train,
         ages=train_ages,
+        description={'fif': epoch_to_fif_train},
     )
-    valid_set, n_channels, window_size = create_dataset(
-        fnames=valid_fnames,
+    valid_set, window_size, n_channels = create_dataset(
+        epochs=epochs_valid,
         ages=valid_ages,
+        description={'fif': epoch_to_fif_valid},
     )
     # optionally, scale the ages to zero mean, unit variance
     # therefore, compute the mean and std on train ages
@@ -108,16 +155,18 @@ def create_datasets(
     return train_set, valid_set, n_channels, window_size
 
 
-def create_dataset(fnames, ages):
+def create_dataset(epochs, ages, description):
     """Load epochs data stored as .fif files. Expects all .fif files to have
     epochs of equal length and to have equal channels.
 
     Parameters
     ----------
-    fnames: list
-        A list of .fif files to be used.
+    epochs: list
+        A list of mne.Epochs objects with preload=False.
     ages: numpy.ndarray
         The subject ages corresponding to the recordings in the .fif files.
+    description: dict
+        Information to add to dataset.description.
 
     Returns
     -------
@@ -128,9 +177,6 @@ def create_dataset(fnames, ages):
     n_channels: int
         The number of channels in the epochs.
     """
-    # read all the epochs fif files
-    epochs = [mne.read_epochs(fname, preload=False) for fname in fnames]
-    assert len(epochs) == len(ages)
     # insert the age of the subjects into the epochs events as description
     # this is where braindecode expects them
     # TODO: add to epochs.metadata instead?
@@ -158,6 +204,7 @@ def create_dataset(fnames, ages):
     )
     # TODO: set targets here?
     # windows_ds.set_description({'target': ages})
+    windows_ds.set_description(description)
     return windows_ds, window_sizes[0], n_channels[0]
 
 
@@ -261,8 +308,6 @@ def create_estimator(
         An estimator holding a braindecode model and implementing fit /
         transform.
     """
-    # TODO: using BatchScoring over strings did not enable usage of sklearn
-    #  functions like cross_val_score with the EEGRegressor
     clf = EEGRegressor(
         model,
         criterion=torch.nn.L1Loss,  # optimize MAE
@@ -273,9 +318,9 @@ def create_estimator(
         optimizer__weight_decay=weight_decay,
         batch_size=batch_size,
         callbacks=[
-            ("R2", BatchScoring('r2', lower_is_better=False)),
-            ("MAE", BatchScoring("neg_mean_absolute_error",
-                                 lower_is_better=False)),
+            # ("R2", BatchScoring('r2', lower_is_better=False)),
+            # ("MAE", BatchScoring("neg_mean_absolute_error",
+            #                      lower_is_better=False)),
             ("lr_scheduler", LRScheduler('CosineAnnealingLR',
                                          T_max=n_epochs-1)),
         ],
@@ -284,12 +329,10 @@ def create_estimator(
     # y is None, since the train_set returns x, y, ind when iterrated, all that
     # is needed for training to work
     # training can be performed by 'clf.fit(X=train_set, y=y, epochs=n_epochs)'
-    # TODO: partially inititalize 'fit' with 'epochs=n_epochs', such that the
-    # call is identical to other estimators?
-    return train_set, None, clf
+    return train_set, valid_set, clf
 
 
-def get_X_y_model(
+def get_train_valid_model(
         fnames, ages, model_name, cv, fold, n_epochs=35, batch_size=64,
         seed=20211011,
 ):
@@ -325,17 +368,19 @@ def get_X_y_model(
         An estimator holding a braindecode model and implementing fit /
         transform.
     """
-    train_fnames, train_ages, valid_fnames, valid_ages = create_data_split(
-        fnames=fnames,
+    epochs, epoch_to_fif = read_epochs(fnames)
+    train_is, valid_is = get_split_ids(
+        n_examples=len(fnames),
         cv=cv,
         fold=fold,
-        ages=ages,
     )
-    train_set, valid_set, window_size, n_channels = create_datasets(
-        train_fnames=train_fnames,
-        train_ages=train_ages,
-        valid_fnames=valid_fnames,
-        valid_ages=valid_ages,
+    train_set, valid_set, n_channels, window_size = create_datasets(
+        epochs=epochs,
+        ages=ages,
+        epoch_to_fif=epoch_to_fif,
+        train_is=train_is,
+        valid_is=valid_is,
+        scale_ages=True,
     )
     model, lr, weight_decay = create_model(
         model_name=model_name,

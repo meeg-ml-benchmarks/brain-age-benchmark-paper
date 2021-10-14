@@ -3,19 +3,10 @@ import argparse
 import importlib
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from scipy.sparse.construct import rand
-import seaborn as sns
 
 import mne
-from sklearn.linear_model import RidgeCV
-from sklearn.model_selection import cross_val_score
-from sklearn.preprocessing import FunctionTransformer
-from sklearn.dummy import DummyRegressor
-from sklearn.pipeline import make_pipeline
 from sklearn.model_selection import KFold
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.impute import SimpleImputer
+from sklearn.metrics import mean_absolute_error, r2_score
 
 
 parser = argparse.ArgumentParser(description='Braindecode network decoding.')
@@ -90,7 +81,7 @@ results = []
 for model_name in ['shallow', 'deep']:
     for fold_i in range(n_folds):
         cv = KFold(n_splits=n_folds, shuffle=True, random_state=42)
-        X, y, model = get_X_y_model(
+        train_set, valid_set, model = get_X_y_model(
             fnames=fnames,
             model_name=model_name,
             ages=ages,
@@ -100,7 +91,18 @@ for model_name in ['shallow', 'deep']:
             batch_size=batch_size,
             seed=seed,
         )
-        model.fit(X=X, y=y, epochs=n_epochs)
-        scores = [model.history[-1, m] for m in metrics]
-        results.append([model_name] + scores)
-results = pd.DataFrame(results, columns=[model_name]+metrics)
+        model.fit(X=train_set, epochs=n_epochs)
+        # TODO: use valid_set.description to group valid predictions from
+        #  individual epoch predictions to .fif predictions. average them and
+        #  then compute the scores
+        train_ages = train_set.get_metadata()['target'].values
+        mean_train_age = np.mean(train_ages)
+        std_train_age = np.std(train_ages)
+
+        preds = model.predict(valid_set)
+        preds = (preds * std_train_age) + mean_train_age
+
+        valid_ages = valid_set.get_metadata()['target'].values
+        mae = mean_absolute_error(valid_ages, preds)
+        r2 = r2_score(valid_ages, preds)
+        print(model_name, fold_i, mae, r2)

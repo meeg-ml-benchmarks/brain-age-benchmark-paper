@@ -9,18 +9,38 @@ import mne
 import coffeine
 from mne_features.feature_extraction import extract_features
 
-
+DATASETS = ['chbp', 'lemon', 'tuab', 'camcan']
+FEATURE_TYPE = ['fb_covs', 'handcrafted']
 parser = argparse.ArgumentParser(description='Compute features.')
 parser.add_argument(
-    '-d', '--dataset', choices=['chbp', 'lemon', 'tuab', 'camcan'],
+    '-d', '--dataset',
+    default=None,
+    nargs='+',
     help='the dataset for which features should be computed')
 parser.add_argument(
-    '-t', '--feature_type', choices=['fb_covs', 'handcrafted'],
-    default='fb_covs', help='Type of features to compute')
-args = parser.parse_args()
-dataset = args.dataset
-FEATURE_TYPE = args.feature_type
+    '-t', '--feature_type',
+    default=None,
+    nargs='+', help='Type of features to compute')
+parser.add_argument(
+    '--n_jobs', type=int, default=1,
+    help='number of parallel processes to use (default: 1)')
 
+args = parser.parse_args()
+datasets = args.dataset
+feature_types = args.feature_type
+n_jobs = args.n_jobs
+if datasets is None:
+    datasets = list(DATASETS)
+if feature_types is None:
+    feature_types = list(FEATURE_TYPE)
+tasks = [(ds, bs) for ds in datasets for bs in feature_types]
+for dataset, feature_type in tasks:
+    if dataset not in DATASETS:
+        raise ValueError(f"The dataset '{dataset}' passed is unkonwn")
+    if feature_type not in FEATURE_TYPE:
+        raise ValueError(f"The benchmark '{feature_type}' passed is unkonwn")
+print(f"Running benchmarks: {', '.join(feature_types)}")
+print(f"Datasets: {', '.join(datasets)}")
 
 config_map = {'chbp': "config_chbp_eeg",
               'lemon': "config_lemon_eeg",
@@ -34,7 +54,7 @@ bids_root = cfg.bids_root
 deriv_root = cfg.deriv_root
 task = cfg.task
 data_type = cfg.data_type
-N_JOBS = cfg.N_JOBS
+N_JOBS = cfg.N_JOBS if not n_jobs else n_jobs
 DEBUG = False
 
 conditions = {
@@ -132,9 +152,9 @@ def run_subject(subject, task, condition):
         return 'condition not found'
 
     try:
-        if FEATURE_TYPE == 'fb_covs':
+        if feature_type == 'fb_covs':
             out = extract_fb_covs(epochs, condition)
-        elif FEATURE_TYPE == 'handcrafted':
+        elif feature_type == 'handcrafted':
             out = extract_handcrafted_feats(epochs, condition)
         else:
             NotImplementedError()
@@ -143,37 +163,37 @@ def run_subject(subject, task, condition):
 
     return out
 
+for dataset, feature_type in tasks:
+    for condition in conditions:
+        print(f"Computing {feature_type} features on {dataset} for '{condition}'")
+        features = Parallel(n_jobs=N_JOBS)(
+            delayed(run_subject)(sub, task=task, condition=condition)
+            for sub in subjects)
 
-for condition in conditions:
-    print(f"Computing {FEATURE_TYPE} features on {dataset} for '{condition}'")
-    features = Parallel(n_jobs=N_JOBS)(
-        delayed(run_subject)(sub, task=task, condition=condition)
-        for sub in subjects)
+        out = {sub: ff for sub, ff in zip(subjects, features)
+            if not isinstance(ff, str)}
 
-    out = {sub: ff for sub, ff in zip(subjects, features)
-           if not isinstance(ff, str)}
+        label = None
+        if dataset in ("chbp", "lemon"):
+            label = 'pooled'
+            if '/' in condition:
+                label = f'eyes-{condition.split("/")[1]}'
+        elif dataset in ("tuab", 'camcan'):
+            label = 'rest'
 
-    label = None
-    if dataset in ("chbp", "lemon"):
-        label = 'pooled'
-        if '/' in condition:
-            label = f'eyes-{condition.split("/")[1]}'
-    elif dataset in ("tuab", 'camcan'):
-        label = 'rest'
+        out_fname = deriv_root / f'features_{feature_type}_{label}.h5'
+        log_out_fname = deriv_root / f'feature_{feature_type}_{label}-log.csv'
 
-    out_fname = deriv_root / f'features_{FEATURE_TYPE}_{label}.h5'
-    log_out_fname = deriv_root / f'feature_{FEATURE_TYPE}_{label}-log.csv'
+        mne.externals.h5io.write_hdf5(
+            out_fname,
+            out,
+            overwrite=True
+        )
+        print(f'Features saved under {out_fname}.')
 
-    mne.externals.h5io.write_hdf5(
-        out_fname,
-        out,
-        overwrite=True
-    )
-    print(f'Features saved under {out_fname}.')
-
-    logging = ['OK' if not isinstance(ff, str) else ff for sub, ff in
-               zip(subjects, features)]
-    out_log = pd.DataFrame({"ok": logging, "subject": subjects})
-    out_log.to_csv(log_out_fname)
-    print(f'Log saved under {log_out_fname}.')
+        logging = ['OK' if not isinstance(ff, str) else ff for sub, ff in
+                zip(subjects, features)]
+        out_log = pd.DataFrame({"ok": logging, "subject": subjects})
+        out_log.to_csv(log_out_fname)
+        print(f'Log saved under {log_out_fname}.')
 

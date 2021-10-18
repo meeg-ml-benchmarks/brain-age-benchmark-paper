@@ -8,51 +8,70 @@ import mne
 from mne_bids import BIDSPath
 import autoreject
 
+DATASETS = ['chbp', 'lemon', 'tuab', 'camcan']
 parser = argparse.ArgumentParser(description='Compute autoreject.')
-parser.add_argument('-d', '--dataset',
-                    help='the dataset for which features should be computed')
+parser.add_argument(
+    '-d', '--dataset',
+    default=None,
+    nargs='+',
+    help='the dataset for which preprocessing should be computed')
+parser.add_argument(
+    '--n_jobs', type=int, default=1,
+    help='number of parallel processes to use (default: 1)')
 args = parser.parse_args()
 dataset = args.dataset
-
-config_map = {'chbp': "config_chbp_eeg",
-              'lemon': "config_lemon_eeg",
-              'tuab': "config_tuab",
-              'camcan': "config_camcan_meg"}
-if dataset not in config_map:
-    raise ValueError(f"We don't know the dataset '{dataset}' you requested.")
+args = parser.parse_args()
+datasets = args.dataset
+n_jobs = args.n_jobs
+if datasets is None:
+    datasets = list(DATASETS)
+print(f"Datasets: {', '.join(datasets)}")
 
 cfg = importlib.import_module(config_map[dataset])
-bids_root = cfg.bids_root
-deriv_root = cfg.deriv_root
-task = cfg.task
-analyze_channels = cfg.analyze_channels
-data_type = cfg.data_type
-N_JOBS = cfg.N_JOBS
+N_JOBS = (n_jobs if n_jobs else cfg.N_JOBS)
 DEBUG = False
 
-session = None
-sessions = cfg.sessions
-if dataset in ('tuab', 'camcan'):
-    session = sessions[0]
-
-conditions = {
-    'lemon': ('eyes/closed', 'eyes/open', 'eyes'),
-    'chbp': ('eyes/closed', 'eyes/open', 'eyes'),
-    'tuab': ('rest',),
-    'camcan': ('rest',)
-}[dataset]
-
-
-subjects_df = pd.read_csv(bids_root / "participants.tsv", sep='\t')
-
-subjects = sorted(sub for sub in subjects_df.participant_id if
-                  (deriv_root / sub / session / data_type).exists())
 if DEBUG:
     subjects = subjects[:1]
     N_JOBS = 1
 
 
-def run_subject(subject, task):
+def prepare_dataset(dataset):
+    config_map = {'chbp': "config_chbp_eeg",
+                  'lemon': "config_lemon_eeg",
+                  'tuab': "config_tuab",
+                  'camcan': "config_camcan_meg"}
+    if dataset not in config_map:
+        raise ValueError(
+            f"We don't know the dataset '{dataset}' you requested.")
+
+    cfg = importlib.import_module(config_map[dataset])
+    cfg.conditions = {
+        'lemon': ('eyes/closed', 'eyes/open', 'eyes'),
+        'chbp': ('eyes/closed', 'eyes/open', 'eyes'),
+        'tuab': ('rest',),
+        'camcan': ('rest',)
+    }[dataset]
+
+    cfg.session = None
+    sessions = cfg.sessions
+    if dataset in ('tuab', 'camcan'):
+        cfg.session = sessions[0]
+
+    subjects_df = pd.read_csv(cfg.bids_root / "participants.tsv", sep='\t')
+    subjects = sorted(sub for sub in subjects_df.participant_id if
+                      (cfg.deriv_root / sub / cfg.session /
+                       cfg.data_type).exists())
+    return cfg, subjects
+
+def run_subject(subject, cfg):
+    deriv_root = cfg.deriv_root
+    task = cfg.task
+    analyze_channels = cfg.analyze_channels
+    data_type = cfg.data_type
+    session = cfg.session
+    conditions = cfg.conditions
+
     bp = BIDSPath(root=deriv_root, subject=subject, session=session,
                   datatype=data_type, processing="clean", task=task,
                   check=False, suffix="epo")
@@ -77,10 +96,15 @@ def run_subject(subject, task):
     epochs.save(bp_out, overwrite=True)
     return ok
 
+for dataset in datasets:
+    cfg, subjects = prepare_dataset(dataset)
 
-print(f"computing autorejct on {dataset}")
-logging = Parallel(n_jobs=N_JOBS)(
-  delayed(run_subject)(sub.split('-')[1], task=task) for sub in subjects)
+    if DEBUG:
+        subjects = subjects[:1]
+        N_JOBS = 1
 
-out_log = pd.DataFrame({"ok": logging, "subject": subjects})
-out_log.to_csv(deriv_root / 'autoreject_log.csv')
+    print(f"computing autorejct on {dataset}")
+    logging = Parallel(n_jobs=N_JOBS)(
+        delayed(run_subject)(sub.split('-')[1], cfg) for sub in subjects)
+    out_log = pd.DataFrame({"ok": logging, "subject": subjects})
+    out_log.to_csv(cfg.deriv_root / 'autoreject_log.csv')

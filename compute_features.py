@@ -42,40 +42,7 @@ for dataset, feature_type in tasks:
         raise ValueError(f"The benchmark '{feature_type}' passed is unkonwn")
 print(f"Running benchmarks: {', '.join(feature_types)}")
 print(f"Datasets: {', '.join(datasets)}")
-
-config_map = {'chbp': "config_chbp_eeg",
-              'lemon': "config_lemon_eeg",
-              'tuab': "config_tuab",
-              'camcan': "config_camcan_meg"}
-if dataset not in config_map:
-    raise ValueError(f"We don't know the dataset '{dataset}' you requested.")
-
-cfg = importlib.import_module(config_map[dataset])
-bids_root = cfg.bids_root
-deriv_root = cfg.deriv_root
-task = cfg.task
-data_type = cfg.data_type
-N_JOBS = cfg.N_JOBS if not n_jobs else n_jobs
 DEBUG = False
-
-conditions = {
-    'lemon': ('eyes/closed', 'eyes/open', 'eyes'),
-    'chbp': ('eyes/closed', 'eyes/open', 'eyes'),
-    'tuab': ('rest',),
-    'camcan': ('rest',)
-}[dataset]
-
-session = None
-sessions = cfg.sessions
-if dataset in ('tuab', 'camcan'):
-    # session = f'ses-{sessions[0]}'
-    session = sessions[0]
-
-subjects_df = pd.read_csv(bids_root / "participants.tsv", sep='\t')
-
-subjects = sorted(sub for sub in subjects_df.participant_id if
-                  (deriv_root / sub / session / data_type).exists())
-
 frequency_bands = {
     "low": (0.1, 1),
     "delta": (1, 4),
@@ -117,13 +84,6 @@ hc_func_params = {
     'pow_freq_bands__normalize': None,
 }
 
-if DEBUG:
-    subjects = subjects[:1]
-    N_JOBS = 1
-    frequency_bands = {"alpha": (8.0, 15.0)}
-    hc_selected_funcs = ['std']
-    hc_func_params = dict()
-
 
 def extract_fb_covs(epochs, condition):
     features, meta_info = coffeine.compute_features(
@@ -142,7 +102,40 @@ def extract_handcrafted_feats(epochs, condition):
     return out
 
 
-def run_subject(subject, task, condition):
+def prepare_dataset(dataset):
+    config_map = {'chbp': "config_chbp_eeg",
+                  'lemon': "config_lemon_eeg",
+                  'tuab': "config_tuab",
+                  'camcan': "config_camcan_meg"}
+    if dataset not in config_map:
+        raise ValueError(
+            f"We don't know the dataset '{dataset}' you requested.")
+
+    cfg = importlib.import_module(config_map[dataset])
+    cfg.conditions = {
+        'lemon': ('eyes/closed', 'eyes/open', 'eyes'),
+        'chbp': ('eyes/closed', 'eyes/open', 'eyes'),
+        'tuab': ('rest',),
+        'camcan': ('rest',)
+    }[dataset]
+
+    cfg.session = None
+    sessions = cfg.sessions
+    if dataset in ('tuab', 'camcan'):
+        cfg.session = sessions[0]
+
+    subjects_df = pd.read_csv(cfg.bids_root / "participants.tsv", sep='\t')
+    subjects = sorted(sub for sub in subjects_df.participant_id if
+                      (cfg.deriv_root / sub / cfg.session /
+                       cfg.data_type).exists())
+    return cfg, subjects
+
+
+def run_subject(subject, cfg, condition):
+    task = cfg.task
+    deriv_root = cfg.deriv_root
+    data_type = cfg.data_type
+
     bp = BIDSPath(root=deriv_root, subject=subject, session=session,
                   datatype=data_type, processing="autoreject", task=task,
                   check=False, suffix="epo")
@@ -168,10 +161,19 @@ def run_subject(subject, task, condition):
 
 
 for dataset, feature_type in tasks:
-    for condition in conditions:
+    cfg, subjects = prepare_dataset(dataset)
+
+    if DEBUG:
+        subjects = subjects[:1]
+        N_JOBS = 1
+        frequency_bands = {"alpha": (8.0, 15.0)}
+        hc_selected_funcs = ['std']
+        hc_func_params = dict()
+
+    for condition in cfg.conditions:
         print(f"Computing {feature_type} features on {dataset} for '{condition}'")
         features = Parallel(n_jobs=N_JOBS)(
-            delayed(run_subject)(sub.split('-')[1], task=task, condition=condition)
+            delayed(run_subject)(sub.split('-')[1], cfg=cfg, condition=condition)
             for sub in subjects)
 
         out = {sub: ff for sub, ff in zip(subjects, features)
@@ -185,8 +187,9 @@ for dataset, feature_type in tasks:
         elif dataset in ("tuab", 'camcan'):
             label = 'rest'
 
-        out_fname = deriv_root / f'features_{feature_type}_{label}.h5'
-        log_out_fname = deriv_root / f'feature_{feature_type}_{label}-log.csv'
+        out_fname = cfg.deriv_root / f'features_{feature_type}_{label}.h5'
+        log_out_fname = (
+            cfg.deriv_root / f'feature_{feature_type}_{label}-log.csv')
 
         mne.externals.h5io.write_hdf5(
             out_fname,

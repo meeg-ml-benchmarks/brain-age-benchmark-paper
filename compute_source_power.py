@@ -47,16 +47,16 @@ def compute_source_power(subject, deriv_root, fsaverage_subject_dir,
     inv = mne.minimum_norm.read_inverse_operator(fname_inv)
     info = mne.io.read_info(fname_info)
     covs = features['sub-' + subject]['covs']
-    
+
     # Prepare label time series
     labels = mne.read_labels_from_annot('fsaverage', 'aparc_sub',
                                         subjects_dir=fsaverage_subject_dir)
     labels = mne.morph_labels(labels,
-                                subject_from='fsaverage',
-                                subject_to=subject,
-                                subjects_dir=subjects_dir)
+                              subject_from='fsaverage',
+                              subject_to=subject,
+                              subjects_dir=subjects_dir)
     labels = [ll for ll in labels if 'unknown' not in ll.name]
-    
+
     # for each frequency band
     result = dict()
     freq_keys = frequency_bands.keys()

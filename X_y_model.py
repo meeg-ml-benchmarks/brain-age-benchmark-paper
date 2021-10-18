@@ -1,13 +1,17 @@
 import mne
 import torch
 import numpy as np
+import pandas as pd
+from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.model_selection import KFold
+
 from skorch.callbacks import LRScheduler, BatchScoring
 from skorch.helper import predefined_split
 
+from braindecode.datasets import BaseConcatDataset
 from braindecode.util import set_random_seeds
 from braindecode.models import ShallowFBCSPNet, Deep4Net
-from braindecode.datasets import create_from_mne_epochs
+from braindecode.datasets import create_from_mne_epochs, WindowsDataset
 from braindecode import EEGRegressor
 
 
@@ -87,7 +91,7 @@ def split(to_split, train_is, valid_is):
     return train_split, valid_split
 
 
-def create_datasets(epochs, ages, epoch_to_fif, train_is, valid_is, scale_ages):
+def create_datasets_old(epochs, ages, epoch_to_fif, train_is, valid_is, scale_ages):
     """Load epochs data stored as .fif files. Expects all .fif files to have
     epochs of equal length and to have equal channels.
 
@@ -127,12 +131,12 @@ def create_datasets(epochs, ages, epoch_to_fif, train_is, valid_is, scale_ages):
     # flatten the lists
     epoch_to_fif_train = [j for i in epoch_to_fif_train for j in i]
     epoch_to_fif_valid = [j for i in epoch_to_fif_valid for j in i]
-    train_set, window_size, n_channels = create_dataset(
+    train_set, window_size, n_channels = create_dataset_old(
         epochs=epochs_train,
         ages=train_ages,
         description={'fif': epoch_to_fif_train},
     )
-    valid_set, window_size, n_channels = create_dataset(
+    valid_set, window_size, n_channels = create_dataset_old(
         epochs=epochs_valid,
         ages=valid_ages,
         description={'fif': epoch_to_fif_valid},
@@ -155,7 +159,36 @@ def create_datasets(epochs, ages, epoch_to_fif, train_is, valid_is, scale_ages):
     return train_set, valid_set, n_channels, window_size
 
 
-def create_dataset(epochs, ages, description):
+def create_dataset(fnames, ages):
+    datasets = []
+    for fname, age in zip(fnames, ages):
+        # read epochs file
+        epochs = mne.read_epochs(fname=fname)
+        # fake metadata for braindecode. use window ids as well as age as target
+        metadata = np.array([
+            list(range(len(epochs))),  # i_window_in_trial (chunk of rec)
+            len(epochs) * [-1],  # i_start_in_trial (unknown / unused)
+            len(epochs) * [-1],  # i_stop_in_trial (unknown / unused
+            len(epochs) * [age],  # target (subject age)
+        ])
+        metadata = pd.DataFrame(
+            data=metadata.T,
+            columns=['i_window_in_trial', 'i_start_in_trial', 'i_stop_in_trial',
+                     'target'],
+        )
+
+        epochs.metadata = metadata
+        # create a windows dataset
+        ds = WindowsDataset(
+            windows=epochs,
+            description={'age': age, 'fname': fname},
+            targets_from='metadata',
+        )
+        datasets.append(ds)
+    return datasets
+
+
+def create_dataset_old(epochs, ages, description):
     """Load epochs data stored as .fif files. Expects all .fif files to have
     epochs of equal length and to have equal channels.
 
@@ -274,7 +307,7 @@ def create_model(model_name, window_size, n_channels, seed):
     return model, lr, weight_decay
 
 
-def create_estimator(
+def create_estimator_old(
         model, train_set, valid_set, n_epochs, batch_size, lr, weight_decay,
 ):
     """Create am estimator (EEGRegressor) that implements fit/transform.
@@ -330,6 +363,58 @@ def create_estimator(
     # is needed for training to work
     # training can be performed by 'clf.fit(X=train_set, y=y, epochs=n_epochs)'
     return train_set, valid_set, clf
+
+
+def create_estimator(
+        model, n_epochs, batch_size, lr, weight_decay,
+):
+    """Create am estimator (EEGRegressor) that implements fit/transform.
+
+    Parameters
+    ----------
+    model: braindecode.models.Deep4Net or braindecode.models.ShallowFBCSPNet
+        A braindecode convolutional neural network.
+    n_epochs: int
+        The number of training epochs used in model training (required to
+        in the creation of a learning rate scheduler).
+    batch_size: int
+        The size of training batches.
+    lr: float
+        The learning rate to be used in network training.
+    weight_decay: float
+        The weight decay to be used in network training.
+
+    Returns
+    -------
+    X: braindecode.datasets.BaseConcatDataset
+        The training set to be used in model.fit(X=X, y=y)
+    y: None
+        Exists for compatibility only. Actual target is included in the train
+        and valid set.
+    model: braindecode.EEGRegressor
+        An estimator holding a braindecode model and implementing fit /
+        transform.
+    """
+    clf = EEGRegressor(
+        model,
+        criterion=torch.nn.L1Loss,  # optimize MAE
+        optimizer=torch.optim.AdamW,
+        optimizer__lr=lr,
+        optimizer__weight_decay=weight_decay,
+        batch_size=batch_size,
+        callbacks=[
+            # ("R2", BatchScoring('r2', lower_is_better=False)),
+            # ("MAE", BatchScoring("neg_mean_absolute_error",
+            #                      lower_is_better=False)),
+            ("lr_scheduler", LRScheduler('CosineAnnealingLR',
+                                         T_max=n_epochs-1)),
+        ],
+        device='cuda' if torch.cuda.is_available() else 'cpu',
+    )
+    # y is None, since the train_set returns x, y, ind when iterrated, all that
+    # is needed for training to work
+    # training can be performed by 'clf.fit(X=train_set, y=y, epochs=n_epochs)'
+    return clf
 
 
 def get_train_valid_model(
@@ -397,3 +482,135 @@ def get_train_valid_model(
         lr=lr,
         weight_decay=weight_decay,
     )
+
+
+def get_X_y_model(
+        fnames,
+        ages,
+        model_name,
+        n_epochs,
+        batch_size,
+        seed,
+):
+    """Create am estimator (EEGRegressor) that implements fit/transform and a
+    braindecode dataset.
+
+    Parameters
+    ----------
+    fnames: list
+        A list of .fif files to be used.
+    ages: numpy.ndarray
+        The subject ages corresponding to the recordings in the .fif files.
+    model_name: str
+        The name of the model (either 'shallow' or 'deep').
+    n_epochs: int
+        The number of training epochs used in model training (required to
+        in the creation of a learning rate scheduler).
+    batch_size: int
+        The size of training batches.
+    seed: int
+        The seed to be used to initialize the network.
+
+    Returns
+    -------
+    ds: braindecode.datasets.BaseConcatDataset
+        A braindecode datast holding all data and targets.
+    model: braindecode.EEGRegressor
+        A braindecode estimator implemnting fit/transform.
+    """
+    epochs, epoch_to_fif = read_epochs(fnames)
+    ds, window_size, n_channels = create_dataset_old(
+        epochs=[mne.read_epochs(fname) for fname in fnames],
+        ages=ages,
+        # for every pre-cut epoch, add an entry to description corresponding
+        # to the recordings it originates from
+        description={'rec': [j for i in epoch_to_fif for j in i]},
+    )
+    model, lr, weight_decay = create_model(
+        model_name=model_name,
+        window_size=window_size,
+        n_channels=n_channels,
+        seed=seed,
+    )
+    model = create_estimator(
+        model=model,
+        n_epochs=n_epochs,
+        batch_size=batch_size,
+        lr=lr,
+        weight_decay=weight_decay,
+    )
+    return ds, model
+
+
+def get_scores(y_true, y_pred, metrics):
+    return {metric.__name__: metric(y_true, y_pred) for metric in metrics}
+
+
+def cross_val_score(
+    estimator,
+    X,
+    cv,
+    fit_params=None,
+):
+    """Create am estimator (EEGRegressor) that implements fit/transform.
+
+    Parameters
+    ----------
+    estimator: braindecode.EEGRegressor
+        A braindecode estimator implemnting fit/transform.
+    X: braindecode.datasets.BaseConcatDataset
+        A braindecode datast holding all data and targets.
+    cv: sklearn.model_selection.KFold
+        A scikit-learn object to generate splits.
+    fit_params: dict
+        Additional parameters to be used when fitting the estimator.
+
+    """
+    metrics = [mean_absolute_error, r2_score]
+    scores = []
+    scale_ages = True
+    # we split based on recordings, such that windows from one example
+    # do NOT end up in both train and valid set
+    n_recs = X.description['rec'].unique()
+    for fold_i, (train_rec_i, valid_rec_i) in enumerate(cv.split(n_recs)):
+        # we assign the windows into train and valid set according to the
+        # recordings
+        rec_splits = X.split('rec')
+        train_set = BaseConcatDataset([rec_splits[str(i)] for i in train_rec_i])
+        valid_set = BaseConcatDataset([rec_splits[str(i)] for i in valid_rec_i])
+        # compute mean and std of train ages and set a target_transform to
+        # both train and valid set
+        train_ages = train_set.get_metadata().groupby('rec').head(1)['target']
+        mean_train_rec_age = train_ages.mean()
+        std_train_rec_age = train_ages.std()
+
+        # scale the ages to zero mean unit variance
+        if scale_ages:
+            def scale_age(age):
+                age = (age - mean_train_rec_age) / std_train_rec_age
+                return age
+
+            train_set.target_transform = scale_age
+            valid_set.target_transform = scale_age
+
+        # train the net
+        estimator.fit(X=train_set, y=None, **fit_params)
+        # we predict the validation set
+        y_pred = estimator.predict(valid_set)
+        df = valid_set.get_metadata()
+        df['y_pred'] = y_pred
+
+        # invert the target_transform
+        if scale_ages:
+            df['y_pred'] = df['y_pred'] * std_train_rec_age + mean_train_rec_age
+
+        # these are window predictions and scores
+        print(fold_i, 'window', get_scores(df['target'], df['y_pred'], metrics))
+
+        # backtrack window predictions and generate recording predictions and
+        # scores
+        avg_df = df.groupby('rec').mean()
+        this_scores = get_scores(avg_df['target'], avg_df['y_pred'], metrics)
+        scores.append(this_scores)
+        print(fold_i, 'rec', scores[-1])
+    return scores

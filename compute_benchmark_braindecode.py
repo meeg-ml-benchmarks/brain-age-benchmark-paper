@@ -71,38 +71,26 @@ else:
 
 # code below expects to get a list of .fif file names 'fnames' pointing to
 # epoched data as well as a list of ages 'ages'
-from X_y_model import get_X_y_model
+from X_y_model import get_X_y_model, cross_val_score
 n_folds = 5
+cv = KFold(n_splits=n_folds, shuffle=True, random_state=42)
 n_epochs = 3
 batch_size = 64
 seed = 20211012
-metrics = ['neg_mean_absolute_error', 'r2']
-results = []
+
 for model_name in ['shallow', 'deep']:
-    for fold_i in range(n_folds):
-        cv = KFold(n_splits=n_folds, shuffle=True, random_state=42)
-        train_set, valid_set, model = get_X_y_model(
-            fnames=fnames,
-            model_name=model_name,
-            ages=ages,
-            cv=cv,
-            fold=fold_i,
-            n_epochs=n_epochs,
-            batch_size=batch_size,
-            seed=seed,
-        )
-        model.fit(X=train_set, epochs=n_epochs)
-        # TODO: use valid_set.description to group valid predictions from
-        #  individual epoch predictions to .fif predictions. average them and
-        #  then compute the scores
-        train_ages = train_set.get_metadata()['target'].values
-        mean_train_age = np.mean(train_ages)
-        std_train_age = np.std(train_ages)
-
-        preds = model.predict(valid_set)
-        preds = (preds * std_train_age) + mean_train_age
-
-        valid_ages = valid_set.get_metadata()['target'].values
-        mae = mean_absolute_error(valid_ages, preds)
-        r2 = r2_score(valid_ages, preds)
-        print(model_name, fold_i, mae, r2)
+    ds, estimator = get_X_y_model(
+        fnames=fnames,
+        ages=ages,
+        model_name=model_name,
+        n_epochs=n_epochs,
+        batch_size=batch_size,
+        seed=seed,
+    )
+    scores = cross_val_score(
+        estimator=model,
+        X=ds,
+        cv=cv,
+        fit_params={'epochs': n_epochs},
+    )
+    print(model_name, scores)

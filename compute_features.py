@@ -6,6 +6,7 @@ import pandas as pd
 from joblib import Parallel, delayed
 
 import mne
+from mne_bids import BIDSPath
 import coffeine
 from mne_features.feature_extraction import extract_features
 
@@ -64,10 +65,11 @@ conditions = {
     'camcan': ('rest',)
 }[dataset]
 
-session = ''
+session = None
 sessions = cfg.sessions
 if dataset in ('tuab', 'camcan'):
-    session = f'ses-{sessions[0]}'
+    # session = f'ses-{sessions[0]}'
+    session = sessions[0]
 
 subjects_df = pd.read_csv(bids_root / "participants.tsv", sep='\t')
 
@@ -141,13 +143,14 @@ def extract_handcrafted_feats(epochs, condition):
 
 
 def run_subject(subject, task, condition):
-    session_code = session + "_" if session else ""
-    fname = (deriv_root / subject / session / data_type /
-             f'{subject}_{session_code}task-{task}_proc-clean-pick-ar_epo.fif')
-    if not fname.exists():
+    bp = BIDSPath(root=deriv_root, subject=subject, session=session,
+                  datatype=data_type, processing="autoreject", task=task,
+                  check=False, suffix="epo")
+
+    if not bp.fpath.exists():
         return 'no file'
 
-    epochs = mne.read_epochs(fname, proj=False)
+    epochs = mne.read_epochs(bp, proj=False)
     if not any(condition in cc for cc in epochs.event_id):
         return 'condition not found'
 
@@ -163,15 +166,16 @@ def run_subject(subject, task, condition):
 
     return out
 
+
 for dataset, feature_type in tasks:
     for condition in conditions:
         print(f"Computing {feature_type} features on {dataset} for '{condition}'")
         features = Parallel(n_jobs=N_JOBS)(
-            delayed(run_subject)(sub, task=task, condition=condition)
+            delayed(run_subject)(sub.split('-')[1], task=task, condition=condition)
             for sub in subjects)
 
         out = {sub: ff for sub, ff in zip(subjects, features)
-            if not isinstance(ff, str)}
+               if not isinstance(ff, str)}
 
         label = None
         if dataset in ("chbp", "lemon"):
@@ -192,8 +196,7 @@ for dataset, feature_type in tasks:
         print(f'Features saved under {out_fname}.')
 
         logging = ['OK' if not isinstance(ff, str) else ff for sub, ff in
-                zip(subjects, features)]
+                   zip(subjects, features)]
         out_log = pd.DataFrame({"ok": logging, "subject": subjects})
         out_log.to_csv(log_out_fname)
         print(f'Log saved under {log_out_fname}.')
-

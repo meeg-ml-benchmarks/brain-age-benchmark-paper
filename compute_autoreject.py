@@ -5,6 +5,7 @@ from joblib import Parallel, delayed
 import pandas as pd
 
 import mne
+from mne_bids import BIDSPath
 import autoreject
 
 parser = argparse.ArgumentParser(description='Compute autoreject.')
@@ -28,12 +29,11 @@ analyze_channels = cfg.analyze_channels
 data_type = cfg.data_type
 N_JOBS = cfg.N_JOBS
 DEBUG = False
-    
 
-session = ''
+session = None
 sessions = cfg.sessions
 if dataset in ('tuab', 'camcan'):
-    session = f'ses-{sessions[0]}'
+    session = sessions[0]
 
 conditions = {
     'lemon': ('eyes/closed', 'eyes/open', 'eyes'),
@@ -53,10 +53,11 @@ if DEBUG:
 
 
 def run_subject(subject, task):
-    session_code = session + "_" if session else ""
-    fname = (deriv_root / subject / session / data_type /
-             f'{subject}_{session_code}task-{task}_proc-clean_epo.fif')
+    bp = BIDSPath(root=deriv_root, subject=subject, session=session,
+                  datatype=data_type, processing="clean", task=task,
+                  check=False, suffix="epo")
     ok = 'OK'
+    fname = bp.fpath
     if not fname.exists():
         return 'no file'
     epochs = mne.read_epochs(fname, proj=False)
@@ -70,13 +71,16 @@ def run_subject(subject, task):
     ar = autoreject.AutoReject(n_jobs=1, cv=5)
     epochs = ar.fit_transform(epochs)
 
-    out_fname = str(fname).replace("proc-clean", "proc-clean-pick-ar")
-    epochs.save(out_fname, overwrite=True)
+    bp_out = bp.copy().update(
+        processing="autoreject"
+    )
+    epochs.save(bp_out, overwrite=True)
     return ok
+
 
 print(f"computing autorejct on {dataset}")
 logging = Parallel(n_jobs=N_JOBS)(
-  delayed(run_subject)(sub, task=task) for sub in subjects)
+  delayed(run_subject)(sub.split('-')[1], task=task) for sub in subjects)
 
 out_log = pd.DataFrame({"ok": logging, "subject": subjects})
 out_log.to_csv(deriv_root / 'autoreject_log.csv')

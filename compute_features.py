@@ -119,7 +119,7 @@ def prepare_dataset(dataset):
         'camcan': ('rest',)
     }[dataset]
 
-    cfg.session = None
+    cfg.session = ''
     sessions = cfg.sessions
     if dataset in ('tuab', 'camcan'):
         cfg.session = sessions[0]
@@ -162,7 +162,7 @@ def run_subject(subject, cfg, condition):
 
 for dataset, feature_type in tasks:
     cfg, subjects = prepare_dataset(dataset)
-
+    N_JOBS = cfg.N_JOBS if not n_jobs else n_jobs
     if DEBUG:
         subjects = subjects[:1]
         N_JOBS = 1

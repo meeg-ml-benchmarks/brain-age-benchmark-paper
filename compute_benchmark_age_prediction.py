@@ -10,7 +10,7 @@ import seaborn as sns
 import mne
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import RidgeCV    
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import cross_validate
 from sklearn.preprocessing import StandardScaler
 from sklearn.dummy import DummyRegressor
 from sklearn.preprocessing import FunctionTransformer
@@ -127,13 +127,14 @@ def load_benchmark_data(dataset, benchmark, condition=None):
     df_subjects = df_subjects.set_index('participant_id')
     # now we read in the processing log to see for which participants we have EEG
 
-    bench_cfg = bench_config[benchmark]
-    feature_label = bench_cfg['feature_map']
-    feature_log = f'feature_{feature_label}_{condition_}-log.csv'
-    proc_log = pd.read_csv(deriv_root / feature_log)
-    good_subjects = proc_log.query('ok == "OK"').subject
-    df_subjects = df_subjects.loc[good_subjects]
-    print(f"Found data from {len(good_subjects)} subjects")
+    if benchmark != 'dummy':
+        bench_cfg = bench_config[benchmark]
+        feature_label = bench_cfg['feature_map']
+        feature_log = f'feature_{feature_label}_{condition_}-log.csv'
+        proc_log = pd.read_csv(deriv_root / feature_log)
+        good_subjects = proc_log.query('ok == "OK"').subject
+        df_subjects = df_subjects.loc[good_subjects]
+        print(f"Found data from {len(good_subjects)} subjects")
 
     X, y, model = None, None, None
     if benchmark == 'filterbank-riemann':
@@ -198,26 +199,17 @@ def run_benchmark_cv(benchmark, dataset):
         dataset=dataset, benchmark=benchmark)
     cv = KFold(n_splits=10, shuffle=True, random_state=42)
     results = list()
-    for metric in ('neg_mean_absolute_error', 'r2'):
-        start = timer()
-        scores = cross_val_score(model, X, y, cv=cv, scoring=metric,
-                                 n_jobs=N_JOBS)
-        end = timer()
-        time_elapsed = end - start
-
-        score_key = metric
-        if metric == 'neg_mean_absolute_error':
-            score_key = "MAE"
-            scores *= -1
-
-        this_result = {"metric": score_key,
-                       "score": scores,
-                       "benchmark": benchmark,
-                       "dataset": dataset,
-                       "time": time_elapsed}
-        print(f'{score_key}({benchmark}, {dataset}) = {scores.mean()}')
-        results.append(pd.DataFrame(this_result))
-    results = pd.concat(results)
+    metrics = ['neg_mean_absolute_error', 'r2']
+    scores = cross_validate(model, X, y, cv=cv, scoring=metrics,
+                            n_jobs=N_JOBS)
+    results = pd.DataFrame(
+        {'MAE': scores['test_neg_mean_absolute_error'] * -1,
+         'r2': scores['test_r2'],
+         'fit_time': scores['fit_time'],
+         'score_time': scores['score_time']}
+    ) 
+    for metric in ('MAE', 'r2'):
+        print(f'{metric}({benchmark}, {dataset}) = {results[metric].mean()}')
     return results
 
 

@@ -71,15 +71,15 @@ else:
 
 # code below expects to get a list of .fif file names 'fnames' pointing to
 # epoched data as well as a list of ages 'ages'
-from X_y_model import get_X_y_model, cross_val_score
-n_folds = 5
+from X_y_model import get_estimator_and_X, cross_val_score
+n_folds = 10
 cv = KFold(n_splits=n_folds, shuffle=True, random_state=42)
-n_epochs = 3
+n_epochs = 35
 batch_size = 64
 seed = 20211012
 
 for model_name in ['shallow', 'deep']:
-    ds, estimator = get_X_y_model(
+    estimator, X = get_estimator_and_X(
         fnames=fnames,
         ages=ages,
         model_name=model_name,
@@ -88,8 +88,8 @@ for model_name in ['shallow', 'deep']:
         seed=seed,
     )
     scores = cross_val_score(
-        estimator=model,
-        X=ds,
+        estimator=estimator,
+        X=X,
         cv=cv,
         fit_params={'epochs': n_epochs},
     )

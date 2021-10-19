@@ -394,11 +394,10 @@ class CustomSliceDataset(SliceDataset):
         return np.array(item).reshape(-1, 1)
 
 
-def get_scores(estimator, X, y):
+def get_scores(estimator, X, y, metrics):
     """Get multiple metrics with cross_val_score by setting
     'scoring=get_scores'.
     """
-    metrics = [mean_absolute_error, r2_score]
     # TODO: how to invert age scaling?
     y_pred = estimator.predict(X)
     df = X.dataset.get_metadata()
@@ -407,18 +406,32 @@ def get_scores(estimator, X, y):
     df = df.iloc[X.indices]
     df['y_true'] = y
     df['y_pred'] = y_pred
+    scores = {}
     # create window_scores
-    scores = compute_scores(
+    scores['window'] = compute_scores(
         y_true=df['y_true'], y_pred=df['y_pred'], metrics=metrics)
-    print('window', scores)
 
     # create rec scores
     df = df.groupby('rec').mean()
-    scores = compute_scores(
+    scores['rec'] = compute_scores(
         y_true=df['y_true'], y_pred=df['y_pred'], metrics=metrics)
-    print('rec', scores)
     # TODO: how to return multiple scores
-    return scores['mean_absolute_error']
+    return scores
+
+
+class MultiScorer():
+    def __init__(self, metrics):
+        self.metrics = metrics
+        self.scores = None
+
+    def __call__(self, estimator, X, y):
+        self.scores = get_scores(
+            estimator=estimator,
+            X=X,
+            y=y,
+            metrics=self.metrics,
+        )
+        return 0  # for compatibility only
 
 
 def X_y_model(

@@ -2,15 +2,17 @@ import mne
 import torch
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, cross_val_score, GroupKFold
 from sklearn.metrics import mean_absolute_error, r2_score
 
 from skorch.callbacks import LRScheduler, BatchScoring
+from skorch.helper import SliceDataset
 
 from braindecode.datasets import (
     create_from_mne_epochs, WindowsDataset, BaseConcatDataset)
 from braindecode.util import set_random_seeds
 from braindecode.models import ShallowFBCSPNet, Deep4Net
+from braindecode.training.scoring import parse_callbacks
 from braindecode import EEGRegressor
 
 
@@ -45,30 +47,38 @@ def create_dataset_new(fnames, ages):
     """
     # TODO: switch to dataset creation like here?
     datasets = []
-    for fname, age in zip(fnames, ages):
+    start = 0
+    stop = 0
+    for rec_i, (fname, age) in enumerate(zip(fnames, ages)):
         # read epochs file
         epochs = mne.read_epochs(fname=fname)
+        stop += len(epochs)
         # fake metadata for braindecode. use window ids as well as age as target
         metadata = np.array([
             list(range(len(epochs))),  # i_window_in_trial (chunk of rec)
             len(epochs) * [-1],  # i_start_in_trial (unknown / unused)
             len(epochs) * [-1],  # i_stop_in_trial (unknown / unused
             len(epochs) * [age],  # target (subject age)
+            #list(range(start, stop)),  # total window id
         ])
         metadata = pd.DataFrame(
             data=metadata.T,
             columns=['i_window_in_trial', 'i_start_in_trial', 'i_stop_in_trial',
-                     'target'],
+                     'target'],#, 'i_total_window'],
         )
-
         epochs.metadata = metadata
+        # no idea why this is necessary but without the metadata dataframe had
+        # an index like 4,7,8,9, ... which caused an KeyError on getitem through
+        # metadata.loc[idx]. resetting index here fixes that
+        epochs.metadata.reset_index(drop=True, inplace=True)
         # create a windows dataset
         ds = WindowsDataset(
             windows=epochs,
-            description={'age': age, 'fname': fname},
+            description={'age': age, 'fname': fname, 'rec': rec_i},
             targets_from='metadata',
         )
         datasets.append(ds)
+        start += len(epochs)
     return datasets
 
 
@@ -211,13 +221,7 @@ def create_estimator(
         An estimator holding a braindecode model and implementing fit /
         transform.
     """
-    estimator = EEGRegressor(
-        model,
-        criterion=torch.nn.L1Loss,  # optimize MAE
-        optimizer=torch.optim.AdamW,
-        optimizer__lr=lr,
-        optimizer__weight_decay=weight_decay,
-        batch_size=batch_size,
+    callbacks = parse_callbacks(
         callbacks=[
             # ("R2", BatchScoring('r2', lower_is_better=False)),
             # ("MAE", BatchScoring("neg_mean_absolute_error",
@@ -225,6 +229,16 @@ def create_estimator(
             ("lr_scheduler", LRScheduler('CosineAnnealingLR',
                                          T_max=n_epochs-1)),
         ],
+        cropped=False,
+    )
+    estimator = EEGRegressor(
+        model,
+        criterion=torch.nn.L1Loss,  # optimize MAE
+        optimizer=torch.optim.AdamW,
+        optimizer__lr=lr,
+        optimizer__weight_decay=weight_decay,
+        batch_size=batch_size,
+        callbacks=callbacks,
         device='cuda' if torch.cuda.is_available() else 'cpu',
     )
     return estimator
@@ -288,11 +302,11 @@ def get_estimator_and_X(
     return model, ds
 
 
-def get_scores(y_true, y_pred, metrics):
+def compute_scores(y_true, y_pred, metrics):
     return {metric.__name__: metric(y_true, y_pred) for metric in metrics}
 
 
-def cross_val_score(
+def custom_cross_val_score(
     estimator,
     X,
     cv,
@@ -328,14 +342,16 @@ def cross_val_score(
         rec_splits = X.split('rec')
         train_set = BaseConcatDataset([rec_splits[str(i)] for i in train_rec_i])
         valid_set = BaseConcatDataset([rec_splits[str(i)] for i in valid_rec_i])
-        # compute mean and std of train ages and set a target_transform to
-        # both train and valid set
-        train_ages = train_set.get_metadata().groupby('rec').head(1)['target']
-        mean_train_rec_age = train_ages.mean()
-        std_train_rec_age = train_ages.std()
 
         # scale the ages to zero mean unit variance
         if scale_ages:
+            # compute mean and std of train ages and set a target_transform to
+            # both train and valid set
+            train_ages = train_set.get_metadata().groupby('rec').head(1)[
+                'target']
+            mean_train_rec_age = train_ages.mean()
+            std_train_rec_age = train_ages.std()
+
             def scale_age(age):
                 age = (age - mean_train_rec_age) / std_train_rec_age
                 return age
@@ -355,12 +371,127 @@ def cross_val_score(
             df['y_pred'] = df['y_pred'] * std_train_rec_age + mean_train_rec_age
 
         # these are window predictions and scores
-        print(fold_i, 'window', get_scores(df['target'], df['y_pred'], metrics))
+        print(fold_i, 'window', compute_scores(
+            df['target'], df['y_pred'], metrics))
 
         # backtrack window predictions and generate recording predictions and
         # scores
         avg_df = df.groupby('rec').mean()
-        this_scores = get_scores(avg_df['target'], avg_df['y_pred'], metrics)
+        this_scores = compute_scores(
+            avg_df['target'], avg_df['y_pred'], metrics)
         scores.append(this_scores)
         print(fold_i, 'rec', scores[-1])
     return scores
+
+
+class CustomSliceDataset(SliceDataset):
+    # y has to be 2 dimensional, so call y.reshape(-1, 1)
+    def __init__(self, dataset, idx=0, indices=None):
+        super().__init__(dataset=dataset, idx=idx, indices=indices)
+
+    def __getitem__(self, i):
+        item = super().__getitem__(i)
+        return np.array(item).reshape(-1, 1)
+
+
+def get_scores(estimator, X, y):
+    """Get multiple metrics with cross_val_score by setting
+    'scoring=get_scores'.
+    """
+    metrics = [mean_absolute_error, r2_score]
+    # TODO: how to invert age scaling?
+    y_pred = estimator.predict(X)
+    df = X.dataset.get_metadata()
+    df.reset_index(inplace=True, drop=True)
+    # get metadata of valid_set
+    df = df.iloc[X.indices]
+    df['y_true'] = y
+    df['y_pred'] = y_pred
+    # create window_scores
+    scores = compute_scores(
+        y_true=df['y_true'], y_pred=df['y_pred'], metrics=metrics)
+    print('window', scores)
+
+    # create rec scores
+    df = df.groupby('rec').mean()
+    scores = compute_scores(
+        y_true=df['y_true'], y_pred=df['y_pred'], metrics=metrics)
+    print('rec', scores)
+    # TODO: how to return multiple scores
+    return scores['mean_absolute_error']
+
+
+def X_y_model(
+        fnames,
+        ages,
+        model_name,
+        n_epochs,
+        batch_size,
+        seed,
+):
+    datasets = create_dataset_new(
+        fnames=fnames,
+        ages=ages,
+    )
+    ds = BaseConcatDataset(datasets)
+    x = ds.datasets[0].windows.get_data(item=0)
+    (_, n_channels, window_size) = x.shape
+    model, lr, weight_decay = create_model(
+        model_name=model_name,
+        window_size=window_size,
+        n_channels=n_channels,
+        seed=seed,
+    )
+    model = create_estimator(
+        model=model,
+        n_epochs=n_epochs,
+        batch_size=batch_size,
+        lr=lr,
+        weight_decay=weight_decay,
+    )
+    return SliceDataset(ds, idx=0), CustomSliceDataset(ds, idx=1), model
+
+
+def run_cv(fnames, ages):
+    n_epochs = 2
+    cv = BraindecodeKFold(n_splits=10, shuffle=True, random_state=42)
+    X, y, model = X_y_model(
+        fnames=fnames,
+        ages=ages,
+        model_name='shallow',
+        n_epochs=2,
+        batch_size=32,
+        seed=20211012
+    )
+    scores = cross_val_score(
+        model,
+        X=X,
+        y=y,
+        scoring=get_scores,
+        cv=cv,
+        n_jobs=None,
+        fit_params={'epochs': n_epochs},
+    )
+    return scores
+
+
+class BraindecodeKFold(KFold):
+    def __init__(self, n_splits=5, *, shuffle=False, random_state=None):
+        super().__init__(n_splits=n_splits, shuffle=shuffle,
+                         random_state=random_state)
+
+    def split(self, X, y=None, groups=None):
+        # split recordings instead of windows
+        split = super().split(X=X.dataset.datasets)
+        rec = X.dataset.get_metadata()['rec']
+        # the index of DataFrame rec now corresponds to the id of windows
+        rec = rec.reset_index()
+        for train_i, valid_i in split:
+            # print(len(train_i), len(valid_i))
+            # map recording ids to window ids
+            train_window_i = [j for i in train_i for j in
+                              rec[rec['rec'] == i].index.to_list()]
+            valid_window_i = [j for i in valid_i for j in
+                              rec[rec['rec'] == i].index.to_list()]
+            # print(len(train_window_i), len(valid_window_i))
+            yield train_window_i, valid_window_i

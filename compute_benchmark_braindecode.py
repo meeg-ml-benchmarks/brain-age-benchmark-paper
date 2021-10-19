@@ -6,7 +6,7 @@ import pandas as pd
 
 import mne
 from sklearn.model_selection import cross_val_score
-from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.metrics import mean_absolute_error, r2_score, make_scorer
 
 
 parser = argparse.ArgumentParser(description='Braindecode network decoding.')
@@ -71,13 +71,18 @@ else:
 
 # code below expects to get a list of .fif file names 'fnames' pointing to
 # epoched data as well as a list of ages 'ages'
-from X_y_model import X_y_model, BraindecodeKFold as KFold, MultiScorer
+from X_y_model import X_y_model, BraindecodeKFold as KFold, RecScorer
 cv = KFold(n_splits=10, shuffle=True, random_state=42)
 n_epochs = 35
 batch_size = 64
 seed = 20211012
 
-multi_scorer = MultiScorer([mean_absolute_error, r2_score])
+metrics = [mean_absolute_error, r2_score]
+scoring = {}
+for m in metrics():
+    scoring.update({'_'.join(['window', m.__name__]): make_scorer(m)})
+    scoring.update({'_'.join(['rec', m.__name__]): RecScorer(m)})
+
 for model_name in ['shallow', 'deep']:
     X, y, estimator = X_y_model(
         fnames=fnames,
@@ -87,13 +92,13 @@ for model_name in ['shallow', 'deep']:
         batch_size=batch_size,
         seed=seed,
     )
-    cross_val_score(
+    scores = cross_validate(
         estimator=estimator,
         X=X,
         y=y,
-        scoring=multi_scorer,
+        scoring=scoring,
         cv=cv,
         n_jobs=None,
         fit_params={'epochs': n_epochs},
     )
-    print(model_name, multi_scorer.scores)
+    print(model_name, scores)

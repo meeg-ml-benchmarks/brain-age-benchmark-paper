@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 import mne
-from sklearn.model_selection import KFold
+from sklearn.model_selection import cross_val_score
 from sklearn.metrics import mean_absolute_error, r2_score
 
 
@@ -71,15 +71,15 @@ else:
 
 # code below expects to get a list of .fif file names 'fnames' pointing to
 # epoched data as well as a list of ages 'ages'
-from X_y_model import get_estimator_and_X, cross_val_score
-n_folds = 10
-cv = KFold(n_splits=n_folds, shuffle=True, random_state=42)
+from X_y_model import X_y_model, BraindecodeKFold as KFold, MultiScorer
+cv = KFold(n_splits=10, shuffle=True, random_state=42)
 n_epochs = 35
 batch_size = 64
 seed = 20211012
 
+multi_scorer = MultiScorer([mean_absolute_error, r2_score])
 for model_name in ['shallow', 'deep']:
-    estimator, X = get_estimator_and_X(
+    X, y, estimator = X_y_model(
         fnames=fnames,
         ages=ages,
         model_name=model_name,
@@ -87,10 +87,13 @@ for model_name in ['shallow', 'deep']:
         batch_size=batch_size,
         seed=seed,
     )
-    scores = cross_val_score(
+    cross_val_score(
         estimator=estimator,
         X=X,
+        y=y,
+        scoring=multi_scorer,
         cv=cv,
+        n_jobs=None,
         fit_params={'epochs': n_epochs},
     )
-    print(model_name, scores)
+    print(model_name, multi_scorer.scores)

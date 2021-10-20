@@ -20,4 +20,4 @@ fig <- ggplot(
   scale_fill_solarized() +
   labs(x="Age [years]", y="Density")
 
-my_ggsave('./figures/fig_demographics', fig, dpi = 300, width = 8, height = 3)
+my_ggsave('./figures/fig_demographics', fig, dpi = 300, width = 10, height = 4)

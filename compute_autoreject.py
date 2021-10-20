@@ -19,21 +19,13 @@ parser.add_argument(
     '--n_jobs', type=int, default=1,
     help='number of parallel processes to use (default: 1)')
 args = parser.parse_args()
-dataset = args.dataset
-args = parser.parse_args()
 datasets = args.dataset
 n_jobs = args.n_jobs
 if datasets is None:
     datasets = list(DATASETS)
 print(f"Datasets: {', '.join(datasets)}")
 
-cfg = importlib.import_module(config_map[dataset])
-N_JOBS = (n_jobs if n_jobs else cfg.N_JOBS)
 DEBUG = False
-
-if DEBUG:
-    subjects = subjects[:1]
-    N_JOBS = 1
 
 
 def prepare_dataset(dataset):
@@ -53,7 +45,7 @@ def prepare_dataset(dataset):
         'camcan': ('rest',)
     }[dataset]
 
-    cfg.session = None
+    cfg.session = ''
     sessions = cfg.sessions
     if dataset in ('tuab', 'camcan'):
         cfg.session = sessions[0]
@@ -64,6 +56,7 @@ def prepare_dataset(dataset):
                        cfg.data_type).exists())
     return cfg, subjects
 
+
 def run_subject(subject, cfg):
     deriv_root = cfg.deriv_root
     task = cfg.task
@@ -72,9 +65,13 @@ def run_subject(subject, cfg):
     session = cfg.session
     conditions = cfg.conditions
 
-    bp = BIDSPath(root=deriv_root, subject=subject, session=session,
-                  datatype=data_type, processing="clean", task=task,
-                  check=False, suffix="epo")
+    bp_args = dict(root=deriv_root, subject=subject,
+                   datatype=data_type, processing="clean", task=task,
+                   check=False, suffix="epo")
+    if session:
+        bp_args['session'] = session
+    bp = BIDSPath(**bp_args)
+
     ok = 'OK'
     fname = bp.fpath
     if not fname.exists():
@@ -98,6 +95,8 @@ def run_subject(subject, cfg):
 
 for dataset in datasets:
     cfg, subjects = prepare_dataset(dataset)
+    print(cfg.session)
+    N_JOBS = (n_jobs if n_jobs else cfg.N_JOBS)
 
     if DEBUG:
         subjects = subjects[:1]

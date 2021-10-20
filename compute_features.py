@@ -135,10 +135,15 @@ def run_subject(subject, cfg, condition):
     task = cfg.task
     deriv_root = cfg.deriv_root
     data_type = cfg.data_type
+    session = cfg.session
 
-    bp = BIDSPath(root=deriv_root, subject=subject, session=session,
-                  datatype=data_type, processing="autoreject", task=task,
-                  check=False, suffix="epo")
+    bp_args = dict(root=deriv_root, subject=subject,
+                   datatype=data_type, processing="autoreject",
+                   task=task,
+                   check=False, suffix="epo")
+    if session:
+        bp_args['session'] = session
+    bp = BIDSPath(**bp_args)
 
     if not bp.fpath.exists():
         return 'no file'
@@ -171,10 +176,11 @@ for dataset, feature_type in tasks:
         hc_func_params = dict()
 
     for condition in cfg.conditions:
-        print(f"Computing {feature_type} features on {dataset} for '{condition}'")
+        print(
+            f"Computing {feature_type} features on {dataset} for '{condition}'")
         features = Parallel(n_jobs=N_JOBS)(
-            delayed(run_subject)(sub.split('-')[1], cfg=cfg, condition=condition)
-            for sub in subjects)
+            delayed(run_subject)(sub.split('-')[1], cfg=cfg,
+            condition=condition) for sub in subjects)
 
         out = {sub: ff for sub, ff in zip(subjects, features)
                if not isinstance(ff, str)}

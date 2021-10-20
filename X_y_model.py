@@ -12,10 +12,10 @@ from braindecode.datasets import (
     create_from_mne_epochs, WindowsDataset, BaseConcatDataset)
 from braindecode.util import set_random_seeds
 from braindecode.models import ShallowFBCSPNet, Deep4Net
-from braindecode.training.scoring import parse_callbacks
 from braindecode import EEGRegressor
 
 
+# TODO: fix this in braindecode? target should be 2dim
 class CustomSliceDataset(SliceDataset):
     """A modified skorch.helper.SliceDataset to cast singe integers to valid
     2-dimensional scikit-learn regression targets.
@@ -39,19 +39,19 @@ class BraindecodeKFold(KFold):
                          random_state=random_state)
 
     def split(self, X, y=None, groups=None):
+        if y is not None or groups is not None:
+            print("Arguments 'y' and 'groups' are without effect.")
         # split recordings instead of windows
         split = super().split(X=X.dataset.datasets)
         rec = X.dataset.get_metadata()['rec']
         # the index of DataFrame rec now corresponds to the id of windows
         rec = rec.reset_index()
         for train_i, valid_i in split:
-            # print(len(train_i), len(valid_i))
             # map recording ids to window ids
             train_window_i = [j for i in train_i for j in
                               rec[rec['rec'] == i].index.to_list()]
             valid_window_i = [j for i in valid_i for j in
                               rec[rec['rec'] == i].index.to_list()]
-            # print(len(train_window_i), len(valid_window_i))
             yield train_window_i, valid_window_i
 
 
@@ -64,14 +64,71 @@ class RecScorer():
     def __call__(self, estimator, X, y):
         y_pred = estimator.predict(X)
         df = X.dataset.get_metadata()
+        # X is the entire dataset, so resetting the index gives as an
+        # enumeration of windows
         df.reset_index(inplace=True, drop=True)
         # get metadata of valid_set
         df = df.iloc[X.indices]
+        assert len(df) == len(y) == len(y_pred)
         df['y_true'] = y
         df['y_pred'] = y_pred
         # create rec scores
         df = df.groupby('rec').mean()
         return self.metric(y_true=df['y_true'], y_pred=df['y_pred'])
+
+
+def create_windows_ds_from_mne_epochs(
+        epochs,
+        description=None,
+        target_name=None,
+):
+    """Create a braindecode WindowsDataset from mne.Epochs.
+
+    Parameters
+    ----------
+    epochs: mne.Epochs
+
+    description: pandas.Series | dict | None
+        Additional description of the epochs. Can hold e.g. the id of the
+        recording, or the decoding target.
+    target_name: str | None
+        The name of the target. If not None, has to be an entry in description.
+
+    Returns
+    -------
+    braindecode.datasets.WindowsDataset
+        A braindecode WindowsDataset.
+    """
+    target = -1
+    if description is not None and target_name is not None:
+        assert target_name in description, (
+            "If 'target_name' is provided there has to be a corresponding entry"
+            " in description.")
+        target = description[target_name]
+    # fake metadata for braindecode. use window ids as well as age as target
+    metadata = np.array([
+        list(range(len(epochs))),  # i_window_in_trial (chunk of rec)
+        len(epochs) * [-1],  # i_start_in_trial (unknown / unused)
+        len(epochs) * [-1],  # i_stop_in_trial (unknown / unused
+        len(epochs) * [target],  # target (e.g. subject age)
+    ])
+    metadata = pd.DataFrame(
+        data=metadata.T,
+        columns=['i_window_in_trial', 'i_start_in_trial', 'i_stop_in_trial',
+                 'target'],
+    )
+    epochs.metadata = metadata
+    # no idea why this is necessary but without the metadata dataframe had
+    # an index like 4,7,8,9, ... which caused an KeyError on getitem through
+    # metadata.loc[idx]. resetting index here fixes that
+    epochs.metadata.reset_index(drop=True, inplace=True)
+    # create a windows dataset
+    ds = WindowsDataset(
+        windows=epochs,
+        description=description,
+        targets_from='metadata',
+    )
+    return ds
 
 
 def create_dataset(fnames, ages):
@@ -89,38 +146,22 @@ def create_dataset(fnames, ages):
     -------
     braindecode.datasets.BaseConcatDataset
         A braindecode dataset.
+    n_channels: int
+        The number of data channels in epochs.
+    n_samples_in_window: int
+        The number of time samples in epochs.
     """
     datasets = []
     for rec_i, (fname, age) in enumerate(zip(fnames, ages)):
-        # read epochs file
         epochs = mne.read_epochs(fname=fname)
-        # fake metadata for braindecode. use window ids as well as age as target
-        metadata = np.array([
-            list(range(len(epochs))),  # i_window_in_trial (chunk of rec)
-            len(epochs) * [-1],  # i_start_in_trial (unknown / unused)
-            len(epochs) * [-1],  # i_stop_in_trial (unknown / unused
-            len(epochs) * [age],  # target (subject age)
-        ])
-        metadata = pd.DataFrame(
-            data=metadata.T,
-            columns=['i_window_in_trial', 'i_start_in_trial', 'i_stop_in_trial',
-                     'target'],
-        )
-        epochs.metadata = metadata
-        # no idea why this is necessary but without the metadata dataframe had
-        # an index like 4,7,8,9, ... which caused an KeyError on getitem through
-        # metadata.loc[idx]. resetting index here fixes that
-        epochs.metadata.reset_index(drop=True, inplace=True)
-        # create a windows dataset
-        ds = WindowsDataset(
-            windows=epochs,
-            description={'age': age, 'fname': fname, 'rec': rec_i},
-            targets_from='metadata',
-        )
+        description = {'fname': fname, 'rec': rec_i, 'age': age}
+        ds = create_windows_ds_from_mne_epochs(
+            epochs=epochs, description=description, target_name='age')
         datasets.append(ds)
     ds = BaseConcatDataset(datasets)
     x, y, ind = ds[0]
-    return ds, x.shape[-2], x.shape[-1]
+    n_channels, n_samples_in_window = x.shape
+    return ds, n_channels, n_samples_in_window
 
 
 def create_model(model_name, window_size, n_channels, seed):
@@ -212,16 +253,14 @@ def create_estimator(
         An estimator holding a braindecode model and implementing fit /
         transform.
     """
-    callbacks = parse_callbacks(
-        callbacks=[
-            # ("R2", BatchScoring('r2', lower_is_better=False)),
-            # ("MAE", BatchScoring("neg_mean_absolute_error",
-            #                      lower_is_better=False)),
-            ("lr_scheduler", LRScheduler('CosineAnnealingLR',
-                                         T_max=n_epochs-1)),
-        ],
-        cropped=False,
-    )
+    callbacks = [
+        ("R2", BatchScoring('r2', lower_is_better=False)),
+        ("MAE", BatchScoring("neg_mean_absolute_error",
+                             lower_is_better=False)),
+        ("lr_scheduler", LRScheduler('CosineAnnealingLR',
+                                     T_max=n_epochs-1)),
+    ]
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     estimator = EEGRegressor(
         model,
         criterion=torch.nn.L1Loss,  # optimize MAE
@@ -230,7 +269,7 @@ def create_estimator(
         optimizer__weight_decay=weight_decay,
         batch_size=batch_size,
         callbacks=callbacks,
-        device='cuda' if torch.cuda.is_available() else 'cpu',
+        device=device,
     )
     return estimator
 

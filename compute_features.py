@@ -130,7 +130,7 @@ def prepare_dataset(dataset):
     cfg_out.session = ''
     sessions = cfg_in.sessions
     if dataset in ('tuab', 'camcan'):
-        cfg_out.session = sessions[0]
+        cfg_out.session = 'ses-' + sessions[0]
 
     subjects_df = pd.read_csv(cfg_out.bids_root / "participants.tsv", sep='\t')
     subjects = sorted(sub for sub in subjects_df.participant_id if
@@ -144,6 +144,8 @@ def run_subject(subject, cfg, condition):
     deriv_root = cfg.deriv_root
     data_type = cfg.data_type
     session = cfg.session
+    if session.startswith('ses-'):
+        session = session.lstrip('ses-')
 
     bp_args = dict(root=deriv_root, subject=subject,
                    datatype=data_type, processing="autoreject",

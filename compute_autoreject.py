@@ -55,7 +55,7 @@ def prepare_dataset(dataset):
     cfg_out.session = ''
     sessions = cfg_in.sessions
     if dataset in ('tuab', 'camcan'):
-        cfg_out.session = sessions[0]
+        cfg_out.session = 'ses-' + sessions[0]
 
     subjects_df = pd.read_csv(cfg_out.bids_root / "participants.tsv", sep='\t')
     subjects = sorted(sub for sub in subjects_df.participant_id if
@@ -70,6 +70,8 @@ def run_subject(subject, cfg):
     analyze_channels = cfg.analyze_channels
     data_type = cfg.data_type
     session = cfg.session
+    if session.startswith('ses-'):
+        session = session.lstrip('ses-')
     conditions = cfg.conditions
 
     bp_args = dict(root=deriv_root, subject=subject,
@@ -88,6 +90,7 @@ def run_subject(subject, cfg):
                          conditions)
     if not has_conditions:
         return 'no event'
+
     if analyze_channels:
         epochs.pick_channels(analyze_channels)
 
@@ -95,7 +98,8 @@ def run_subject(subject, cfg):
     epochs = ar.fit_transform(epochs)
 
     bp_out = bp.copy().update(
-        processing="autoreject"
+        processing="autoreject",
+        extension='.fif'
     )
     epochs.save(bp_out, overwrite=True)
     return ok

@@ -1,5 +1,6 @@
 from sys import path
 from pathlib import Path
+import mne
 
 study_name = "age-prediction-benchmark"
 

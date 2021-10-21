@@ -55,7 +55,7 @@ class BraindecodeKFold(KFold):
             yield train_window_i, valid_window_i
 
 
-class RecScorer():
+class RecScorer(object):
     """Compute recording scores by averaging all window predictions and labels
      of a recording."""
     def __init__(self, metric):
@@ -105,7 +105,7 @@ def create_windows_ds_from_mne_epochs(
             "If 'target_name' is provided there has to be a corresponding entry"
             " in description.")
         target = description[target_name]
-    # fake metadata for braindecode. use window ids as well as age as target
+    # fake metadata for braindecode
     metadata = np.array([
         list(range(len(epochs))),  # i_window_in_trial (chunk of rec)
         len(epochs) * [-1],  # i_start_in_trial (unknown / unused)
@@ -320,13 +320,15 @@ def X_y_model(
         n_channels=n_channels,
         seed=seed,
     )
-    model = create_estimator(
+    estimator = create_estimator(
         model=model,
         n_epochs=n_epochs,
         batch_size=batch_size,
         lr=lr,
         weight_decay=weight_decay,
     )
+    # since ds returns a 3-tuple, use skorch SliceDataset to get X
     X = SliceDataset(ds, idx=0)
+    # and y in 2d
     y = CustomSliceDataset(ds, idx=1)
-    return X, y, model
+    return X, y, estimator

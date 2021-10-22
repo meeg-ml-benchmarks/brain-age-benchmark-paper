@@ -2,14 +2,13 @@ import mne
 import torch
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import KFold, cross_val_score, GroupKFold
+from sklearn.model_selection import KFold
 from sklearn.metrics import mean_absolute_error, r2_score
 
 from skorch.callbacks import LRScheduler, BatchScoring
 from skorch.helper import SliceDataset
 
-from braindecode.datasets import (
-    create_from_mne_epochs, WindowsDataset, BaseConcatDataset)
+from braindecode.datasets import WindowsDataset, BaseConcatDataset
 from braindecode.util import set_random_seeds
 from braindecode.models import ShallowFBCSPNet, Deep4Net
 from braindecode import EEGRegressor
@@ -39,10 +38,8 @@ class BraindecodeKFold(KFold):
                          random_state=random_state)
 
     def split(self, X, y=None, groups=None):
-        if y is not None or groups is not None:
-            print("Arguments 'y' and 'groups' are without effect.")
         # split recordings instead of windows
-        split = super().split(X=X.dataset.datasets)
+        split = super().split(X=X.dataset.datasets, y=y, groups=groups)
         rec = X.dataset.get_metadata()['rec']
         # the index of DataFrame rec now corresponds to the id of windows
         rec = rec.reset_index(drop=True)
@@ -61,17 +58,22 @@ class RecScorer(object):
 
     def __call__(self, estimator, X, y):
         y_pred = estimator.predict(X)
+        # X is the valid slice of the original dataset and only contains those
+        # examples from X that are speccified in X.indices
         df = X.dataset.get_metadata()
-        # X is the entire dataset, so resetting the index gives as an
+        # X.dataset is the entire dataset, so resetting the index gives as an
         # enumeration of windows
         df.reset_index(inplace=True, drop=True)
         # get metadata of valid_set
         df = df.iloc[X.indices]
+        # make sure the length of the df of the valid_set, the provided ground
+        # truth labels, and the number of predictions match
         assert len(df) == len(y) == len(y_pred)
         df['y_true'] = y
         df['y_pred'] = y_pred
-        # create rec scores
+        # average the predictions (and labels) by recording
         df = df.groupby('rec').mean()
+        # create rec scores
         return self.metric(y_true=df['y_true'], y_pred=df['y_pred'])
 
 
@@ -268,7 +270,11 @@ def create_estimator(
         transform.
     """
     callbacks = [
+        # can be dropped if there is no interest in progress of _window_ r2
+        # during training
         ("R2", BatchScoring('r2', lower_is_better=False)),
+        # can be dropped if there is no interest in progress of _window_ mae
+        # during training
         ("MAE", BatchScoring("neg_mean_absolute_error",
                              lower_is_better=False)),
         ("lr_scheduler", LRScheduler('CosineAnnealingLR',

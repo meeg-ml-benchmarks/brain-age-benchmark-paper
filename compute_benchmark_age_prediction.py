@@ -183,6 +183,9 @@ def load_benchmark_data(dataset, benchmark, condition=None):
             names=list(frequency_bands),
             method='log_diag'
         )
+        model = make_pipeline(
+            filter_bank_transformer, StandardScaler(),
+            RidgeCV(alphas=np.logspace(-5, 10, 100)))
 
     elif benchmark == 'handcrafted':
         features = mne.externals.h5io.read_hdf5(

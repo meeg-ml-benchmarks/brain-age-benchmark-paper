@@ -41,7 +41,7 @@ def compute_source_power(subject, deriv_root, fsaverage_subject_dir,
                          datatype=datatype,
                          root=deriv_root,
                          check=False)
-    fname_info = bids_path.copy().update(processing='clean',
+    fname_info = bids_path.copy().update(processing='autoreject',
                                          suffix='epo')
     fname_inv = bids_path.copy().update(suffix='inv')
     inv = mne.minimum_norm.read_inverse_operator(fname_inv)

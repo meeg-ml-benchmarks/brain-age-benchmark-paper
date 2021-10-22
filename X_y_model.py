@@ -45,13 +45,11 @@ class BraindecodeKFold(KFold):
         split = super().split(X=X.dataset.datasets)
         rec = X.dataset.get_metadata()['rec']
         # the index of DataFrame rec now corresponds to the id of windows
-        rec = rec.reset_index()
+        rec = rec.reset_index(drop=True)
         for train_i, valid_i in split:
             # map recording ids to window ids
-            train_window_i = [j for i in train_i for j in
-                              rec[rec['rec'] == i].index.to_list()]
-            valid_window_i = [j for i in valid_i for j in
-                              rec[rec['rec'] == i].index.to_list()]
+            train_window_i = rec[rec.isin(train_i)].index.to_list()
+            valid_window_i = rec[rec.isin(valid_i)].index.to_list()
             yield train_window_i, valid_window_i
 
 
@@ -75,6 +73,22 @@ class RecScorer(object):
         # create rec scores
         df = df.groupby('rec').mean()
         return self.metric(y_true=df['y_true'], y_pred=df['y_pred'])
+
+
+def make_braindecode_scorer(metric):
+    """Convert a conventional (window) scoring function to a recording scorer.
+
+     Parameters
+     ----------
+     metric: callable
+        A scoring function accepting y_true and y_pred.
+
+    Returns
+    -------
+    RecScorer
+        A scorer that computes performance on recording level.
+     """
+    return RecScorer(metric)
 
 
 def create_windows_ds_from_mne_epochs(

@@ -217,6 +217,8 @@ def run_subject(subject, cfg, condition):
                 covs = mne.externals.h5io.read_hdf5(covs_path)
                 covs = features['sub-' + subject]['covs']
                 out = extract_source_power(bp, subject, cfg.subjects_dir, covs)
+            else:
+                return 'Covariances should be extracted before source power'
         else:
             NotImplementedError()
     except Exception as err:

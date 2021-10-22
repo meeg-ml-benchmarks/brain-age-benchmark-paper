@@ -10,9 +10,10 @@ import mne
 from mne_bids import BIDSPath
 import coffeine
 from mne_features.feature_extraction import extract_features
+from mne.minimum_norm import apply_inverse_cov
 
 DATASETS = ['chbp', 'lemon', 'tuab', 'camcan']
-FEATURE_TYPE = ['fb_covs', 'handcrafted']
+FEATURE_TYPE = ['fb_covs', 'handcrafted', 'source_power']
 parser = argparse.ArgumentParser(description='Compute features.')
 parser.add_argument(
     '-d', '--dataset',
@@ -103,6 +104,41 @@ def extract_handcrafted_feats(epochs, condition):
     return out
 
 
+def extract_source_power(bp, subject, subjects_dir, covs):
+    info = mne.io.read_info(bp)
+    fname_inv = bp.copy().update(suffix='inv')
+    inv = mne.minimum_norm.read_inverse_operator(fname_inv)
+    # Prepare label time series
+    labels = mne.read_labels_from_annot('fsaverage', 'aparc_sub',
+                                        subjects_dir=subjects_dir)
+    labels = mne.morph_labels(labels,
+                              subject_from='fsaverage',
+                              subject_to=subject,
+                              subjects_dir=subjects_dir)
+    labels = [ll for ll in labels if 'unknown' not in ll.name]
+
+    # for each frequency band
+    result = dict()
+    freq_keys = frequency_bands.keys()
+    for i in range(covs.shape[0]):
+        cov = mne.Covariance(data=covs[i, :, :],
+                             names=info['ch_names'],
+                             bads=info['bads'],
+                             projs=info['projs'],
+                             nfree=0)  # nfree ?
+        stc = apply_inverse_cov(cov, info, inv,
+                                nave=1,
+                                method="dSPM")
+
+        label_power = mne.extract_label_time_course(stc,
+                                                    labels,
+                                                    inv['src'],
+                                                    mode="mean")
+        result[freq_keys[i]] = label_power  # needs to be transform in diag matrix
+
+    return result    
+
+
 def prepare_dataset(dataset):
     config_map = {'chbp': "config_chbp_eeg",
                   'lemon': "config_lemon_eeg",
@@ -118,7 +154,8 @@ def prepare_dataset(dataset):
         deriv_root=cfg_in.deriv_root,
         task=cfg_in.task,
         analyze_channels=cfg_in.analyze_channels,
-        data_type=cfg_in.data_type
+        data_type=cfg_in.data_type,
+        subjects_dir=cfg_in.subjects_dir
     )
     cfg_out.conditions = {
         'lemon': ('eyes/closed', 'eyes/open', 'eyes'),
@@ -167,6 +204,19 @@ def run_subject(subject, cfg, condition):
             out = extract_fb_covs(epochs, condition)
         elif feature_type == 'handcrafted':
             out = extract_handcrafted_feats(epochs, condition)
+        elif feature_type == 'source_power':  # needs that fb_covs are already extracted
+            label = None
+            if '/' in condition:
+                label = f'eyes-{condition.split("/")[1]}'
+            elif condition == 'rest':
+                label = 'rest'
+            else:
+                label = 'pooled'
+            covs_path = deriv_root / f'features_fb_covs_{label}.h5'
+            if covs_path.exists():
+                covs = mne.externals.h5io.read_hdf5(covs_path)
+                covs = features['sub-' + subject]['covs']
+                out = extract_source_power(bp, subject, cfg.subjects_dir, covs)
         else:
             NotImplementedError()
     except Exception as err:

@@ -8,6 +8,15 @@ bids_root = pathlib.Path(
 
 deriv_root = pathlib.Path("/storage/store3/derivatives/LEMON_EEG_BIDS/")
 
+# subjects_dir
+
+source_info_path_update = {'processing': 'autoreject',
+                           'suffix': 'epo'}
+
+inverse_targets = []
+
+noise_cov = 'ad-hoc'
+
 task = "RSEEG"
 
 sessions = []  # keep empty for code flow
@@ -47,6 +56,8 @@ epochs_tmin = 0
 epochs_tmax = 10
 baseline = None
 
+run_source_estimation = True
+
 conditions = ["eyes/open", "eyes/closed"]
 
 event_repeated = "drop"
@@ -54,6 +65,7 @@ l_trans_bandwidth = "auto"
 
 h_trans_bandwidth = "auto"
 
+# mri_t1_path_generator
 
 random_state = 42
 

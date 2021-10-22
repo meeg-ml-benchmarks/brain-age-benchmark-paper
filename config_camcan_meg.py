@@ -1,11 +1,16 @@
 import pathlib
 import mne
+from mne_bids import BIDSPath
 ##
 
 
 def get_t1_from_meeg(bids_path):
-    bids_path.update(root='/storage/store/data/camcan/BIDSsep/anat',
-                     session=None)
+    bids_path = BIDSPath(root='/storage/store3/work/amellot/mne_data',
+                         datatype='mri',
+                         subject='fsaverage',
+                         suffix='T1w',
+                         extension='.nii.gz',
+                         check=False)
     return bids_path
 
 
@@ -18,13 +23,12 @@ deriv_root = pathlib.Path('/storage/store3/work/camcan-bids/derivatives')
 
 subjects_dir = pathlib.Path('/storage/store/data/camcan-mne/freesurfer')
 
-source_info_path_update = {'processing': 'clean',
-                      'suffix': 'epo'}
+source_info_path_update = {'processing': 'autoreject',
+                           'suffix': 'epo'}
 
 inverse_targets = []
 
-process_er = True
-noise_cov = 'emptyroom'
+noise_cov = 'ad-hoc'
 
 task = 'rest'
 sessions = ['rest']  # keep empty for code flow

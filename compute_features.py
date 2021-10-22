@@ -118,9 +118,8 @@ def extract_source_power(bp, subject, subjects_dir, covs):
     labels = [ll for ll in labels if 'unknown' not in ll.name]
 
     # for each frequency band
-    result = dict()
-    freq_keys = frequency_bands.keys()
-    for i, frequency_band in enumerate(freq_keys):
+    result = []
+    for i in range(covs.shape[0]):
         cov = mne.Covariance(data=covs[i, :, :],
                              names=info['ch_names'],
                              bads=info['bads'],
@@ -134,8 +133,7 @@ def extract_source_power(bp, subject, subjects_dir, covs):
                                                     labels,
                                                     inv['src'],
                                                     mode="mean")
-        result[frequency_band] = np.diag(label_power[:,0])
-
+        result.append(np.diag(label_power[:,0]))
     return result    
 
 

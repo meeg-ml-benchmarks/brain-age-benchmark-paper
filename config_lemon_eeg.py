@@ -11,7 +11,7 @@ deriv_root = pathlib.Path("/storage/store3/derivatives/LEMON_EEG_BIDS/")
 task = "RSEEG"
 
 sessions = []  # keep empty for code flow
-datatype = "eeg"
+data_type = "eeg"
 ch_types = ["eeg"]
 
 analyze_channels = [

@@ -1,5 +1,6 @@
 from sys import path
 from pathlib import Path
+import mne
 
 study_name = "age-prediction-benchmark"
 
@@ -21,7 +22,7 @@ conditions = []
 
 sessions = ["001"]
 
-datatype = "eeg"
+data_type = "eeg"
 ch_types = ["eeg"]
 
 l_freq = 0.1

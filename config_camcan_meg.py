@@ -1,18 +1,4 @@
 import pathlib
-import mne
-from mne_bids import BIDSPath
-##
-
-
-def get_t1_from_meeg(bids_path):
-    bids_path = BIDSPath(root='/storage/store3/work/amellot/mne_data',
-                         datatype='mri',
-                         subject='fsaverage',
-                         suffix='T1w',
-                         extension='.nii.gz',
-                         check=False)
-    return bids_path
-
 
 study_name = "age-prediction-benchmark"
 
@@ -90,13 +76,12 @@ find_flat_channels_meg = True
 find_noisy_channels_meg = True
 use_maxwell_filter = True
 run_source_estimation = True
+use_template_mri = True
 
 event_repeated = "drop"
 l_trans_bandwidth = "auto"
 
 h_trans_bandwidth = "auto"
-
-mri_t1_path_generator = get_t1_from_meeg
 
 random_state = 42
 

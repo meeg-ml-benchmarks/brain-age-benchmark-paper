@@ -9,6 +9,15 @@ bids_root = pathlib.Path(
 deriv_root = pathlib.Path("/storage/store3/derivatives/CHBMP_EEG_and_MRI/")
 # "/storage/store2/derivatives/eeg-pred-modeling-summer-school/")
 
+subjects_dir = pathlib.Path('/storage/store/data/camcan-mne/freesurfer')
+
+source_info_path_update = {'processing': 'autoreject',
+                           'suffix': 'epo'}
+
+inverse_targets = []
+
+noise_cov = 'ad-hoc'
+
 task = "protmap"
 
 sessions = []  # keep empty for code flow
@@ -47,6 +56,9 @@ N_JOBS = 30
 epochs_tmin = 0
 epochs_tmax = 10
 baseline = None
+
+run_source_estimation = True
+use_template_mri = True
 
 rename_events = {
     "artefacto": "artefact",

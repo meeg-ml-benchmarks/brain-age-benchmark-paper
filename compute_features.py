@@ -3,6 +3,7 @@ import importlib
 from multiprocessing import Value
 from types import SimpleNamespace
 
+import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
 
@@ -106,21 +107,20 @@ def extract_handcrafted_feats(epochs, condition):
 
 def extract_source_power(bp, subject, subjects_dir, covs):
     info = mne.io.read_info(bp)
-    fname_inv = bp.copy().update(suffix='inv')
+    fname_inv = bp.copy().update(suffix='inv',
+                                 processing=None,
+                                 extension='.fif')
     inv = mne.minimum_norm.read_inverse_operator(fname_inv)
     # Prepare label time series
     labels = mne.read_labels_from_annot('fsaverage', 'aparc_sub',
                                         subjects_dir=subjects_dir)
-    labels = mne.morph_labels(labels,
-                              subject_from='fsaverage',
-                              subject_to=subject,
-                              subjects_dir=subjects_dir)
+
     labels = [ll for ll in labels if 'unknown' not in ll.name]
 
     # for each frequency band
     result = dict()
     freq_keys = frequency_bands.keys()
-    for i in range(covs.shape[0]):
+    for i, frequency_band in enumerate(freq_keys):
         cov = mne.Covariance(data=covs[i, :, :],
                              names=info['ch_names'],
                              bads=info['bads'],
@@ -134,7 +134,7 @@ def extract_source_power(bp, subject, subjects_dir, covs):
                                                     labels,
                                                     inv['src'],
                                                     mode="mean")
-        result[freq_keys[i]] = label_power  # needs to be transform in diag matrix
+        result[frequency_band] = np.diag(label_power[:,0])
 
     return result    
 
@@ -204,21 +204,10 @@ def run_subject(subject, cfg, condition):
             out = extract_fb_covs(epochs, condition)
         elif feature_type == 'handcrafted':
             out = extract_handcrafted_feats(epochs, condition)
-        elif feature_type == 'source_power':  # needs that fb_covs are already extracted
-            label = None
-            if '/' in condition:
-                label = f'eyes-{condition.split("/")[1]}'
-            elif condition == 'rest':
-                label = 'rest'
-            else:
-                label = 'pooled'
-            covs_path = deriv_root / f'features_fb_covs_{label}.h5'
-            if covs_path.exists():
-                covs = mne.externals.h5io.read_hdf5(covs_path)
-                covs = features['sub-' + subject]['covs']
-                out = extract_source_power(bp, subject, cfg.subjects_dir, covs)
-            else:
-                return 'Covariances should be extracted before source power'
+        elif feature_type == 'source_power':
+            covs = extract_fb_covs(epochs, condition)
+            covs = covs['covs']
+            out = extract_source_power(bp, subject, cfg.subjects_dir, covs)
         else:
             NotImplementedError()
     except Exception as err:

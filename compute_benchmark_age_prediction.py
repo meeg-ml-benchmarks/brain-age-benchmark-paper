@@ -18,10 +18,12 @@ from sklearn.pipeline import make_pipeline
 from sklearn.model_selection import KFold, GridSearchCV
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.impute import SimpleImputer
+from sklearn.metrics import make_scorer, r2_score, mean_absolute_error
 
 import coffeine
 DATASETS = ['chbp', 'lemon', 'tuab', 'camcan']
-BENCHMARKS = ['dummy', 'filterbank-riemann', 'filterbank-source', 'handcrafted']
+BENCHMARKS = ['dummy', 'filterbank-riemann', 'filterbank-source', 'handcrafted',
+              'shallow', 'deep']
 parser = argparse.ArgumentParser(description='Compute features.')
 parser.add_argument(
     '-d', '--dataset',
@@ -212,9 +214,29 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         X = np.zeros(shape=(len(y), 1))
         model = DummyRegressor(strategy="mean")
 
-    elif benchmark == 'deep':
-        raise NotImplementedError('not yet available')
-
+    elif benchmark in ['shallow', 'deep']:
+        from X_y_model import X_y_model
+        from X_y_model import (
+            # overwrite splitting on eopch level by splitting on recording level
+            BraindecodeKFold as KFold,
+            # overwrite scoring on epoch level by scoring on recording level
+            make_braindecode_scorer as make_scorer,
+        )
+        # TODO: insert file paths corresponding to the age values in df_subjects
+        fif_fnames = []
+        ages = df_subjects.age.values
+        model_name = benchmark
+        n_epochs = 35
+        batch_size = 64
+        seed = 20211022
+        X, y, model = X_y_model(
+            fnames=fif_fnames,
+            ages=ages,
+            model_name=model_name,
+            n_epochs=n_epochs,
+            batch_size=batch_size,
+            seed=seed,
+        )
     return X, y, model
 
 # %% Run CV
@@ -225,11 +247,12 @@ def run_benchmark_cv(benchmark, dataset):
         dataset=dataset, benchmark=benchmark)
     cv = KFold(n_splits=10, shuffle=True, random_state=42)
     results = list()
-    metrics = ['neg_mean_absolute_error', 'r2']
-    scores = cross_validate(model, X, y, cv=cv, scoring=metrics,
+    metrics = [mean_absolute_error, r2_score]
+    scoring = {m.__name__: make_scorer(m) for m in metrics}
+    scores = cross_validate(model, X, y, cv=cv, scoring=scoring,
                             n_jobs=N_JOBS)
     results = pd.DataFrame(
-        {'MAE': scores['test_neg_mean_absolute_error'] * -1,
+        {'MAE': scores['test_mean_absolute_error'],
          'r2': scores['test_r2'],
          'fit_time': scores['fit_time'],
          'score_time': scores['score_time']}

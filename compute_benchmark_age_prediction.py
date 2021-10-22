@@ -217,7 +217,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
     elif benchmark in ['shallow', 'deep']:
         from X_y_model import X_y_model
         from X_y_model import (
-            # overwrite splitting on eopch level by splitting on recording level
+            # overwrite splitting on epoch level by splitting on recording level
             BraindecodeKFold as KFold,
             # overwrite scoring on epoch level by scoring on recording level
             make_braindecode_scorer as make_scorer,

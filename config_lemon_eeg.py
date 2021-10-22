@@ -20,7 +20,7 @@ noise_cov = 'ad-hoc'
 task = "RSEEG"
 
 sessions = []  # keep empty for code flow
-datatype = "eeg"
+data_type = "eeg"
 ch_types = ["eeg"]
 
 analyze_channels = [

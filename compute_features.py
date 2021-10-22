@@ -1,59 +1,49 @@
 import argparse
 import importlib
 from multiprocessing import Value
+from types import SimpleNamespace
 
 import pandas as pd
 from joblib import Parallel, delayed
 
 import mne
+from mne_bids import BIDSPath
 import coffeine
 from mne_features.feature_extraction import extract_features
 
-
+DATASETS = ['chbp', 'lemon', 'tuab', 'camcan']
+FEATURE_TYPE = ['fb_covs', 'handcrafted']
 parser = argparse.ArgumentParser(description='Compute features.')
 parser.add_argument(
-    '-d', '--dataset', choices=['chbp', 'lemon', 'tuab', 'camcan'],
+    '-d', '--dataset',
+    default=None,
+    nargs='+',
     help='the dataset for which features should be computed')
 parser.add_argument(
-    '-t', '--feature_type', choices=['fb_covs', 'handcrafted'],
-    default='fb_covs', help='Type of features to compute')
+    '-t', '--feature_type',
+    default=None,
+    nargs='+', help='Type of features to compute')
+parser.add_argument(
+    '--n_jobs', type=int, default=1,
+    help='number of parallel processes to use (default: 1)')
+
 args = parser.parse_args()
-dataset = args.dataset
-FEATURE_TYPE = args.feature_type
-
-
-config_map = {'chbp': "config_chbp_eeg",
-              'lemon': "config_lemon_eeg",
-              'tuab': "config_tuab",
-              'camcan': "config_camcan_meg"}
-if dataset not in config_map:
-    raise ValueError(f"We don't know the dataset '{dataset}' you requested.")
-
-cfg = importlib.import_module(config_map[dataset])
-bids_root = cfg.bids_root
-deriv_root = cfg.deriv_root
-task = cfg.task
-data_type = cfg.datatype
-N_JOBS = cfg.N_JOBS
+datasets = args.dataset
+feature_types = args.feature_type
+n_jobs = args.n_jobs
+if datasets is None:
+    datasets = list(DATASETS)
+if feature_types is None:
+    feature_types = list(FEATURE_TYPE)
+tasks = [(ds, bs) for ds in datasets for bs in feature_types]
+for dataset, feature_type in tasks:
+    if dataset not in DATASETS:
+        raise ValueError(f"The dataset '{dataset}' passed is unkonwn")
+    if feature_type not in FEATURE_TYPE:
+        raise ValueError(f"The benchmark '{feature_type}' passed is unkonwn")
+print(f"Running benchmarks: {', '.join(feature_types)}")
+print(f"Datasets: {', '.join(datasets)}")
 DEBUG = False
-
-conditions = {
-    'lemon': ('eyes/closed', 'eyes/open', 'eyes'),
-    'chbp': ('eyes/closed', 'eyes/open', 'eyes'),
-    'tuab': ('rest',),
-    'camcan': ('rest',)
-}[dataset]
-
-session = ''
-sessions = cfg.sessions
-if dataset in ('tuab', 'camcan'):
-    session = f'ses-{sessions[0]}'
-
-subjects_df = pd.read_csv(bids_root / "participants.tsv", sep='\t')
-
-subjects = sorted(sub for sub in subjects_df.participant_id if
-                  (deriv_root / sub / session / data_type).exists())
-
 frequency_bands = {
     "low": (0.1, 1),
     "delta": (1, 4),
@@ -95,13 +85,6 @@ hc_func_params = {
     'pow_freq_bands__normalize': None,
 }
 
-if DEBUG:
-    subjects = subjects[:1]
-    N_JOBS = 1
-    frequency_bands = {"alpha": (8.0, 15.0)}
-    hc_selected_funcs = ['std']
-    hc_func_params = dict()
-
 
 def extract_fb_covs(epochs, condition):
     features, meta_info = coffeine.compute_features(
@@ -115,26 +98,74 @@ def extract_handcrafted_feats(epochs, condition):
     features = extract_features(
         epochs[condition].get_data(), epochs.info['sfreq'], hc_selected_funcs,
         funcs_params=hc_func_params, n_jobs=1, ch_names=epochs.ch_names,
-        reorder_chs=True, return_as_df=False)
+        return_as_df=False)
     out = {'feats': features}
     return out
 
 
-def run_subject(subject, task, condition):
-    session_code = session + "_" if session else ""
-    fname = (deriv_root / subject / session / data_type /
-             f'{subject}_{session_code}task-{task}_proc-clean-pick-ar_epo.fif')
-    if not fname.exists():
+def prepare_dataset(dataset):
+    config_map = {'chbp': "config_chbp_eeg",
+                  'lemon': "config_lemon_eeg",
+                  'tuab': "config_tuab",
+                  'camcan': "config_camcan_meg"}
+    if dataset not in config_map:
+        raise ValueError(
+            f"We don't know the dataset '{dataset}' you requested.")
+
+    cfg_in = importlib.import_module(config_map[dataset])
+    cfg_out = SimpleNamespace(
+        bids_root=cfg_in.bids_root,
+        deriv_root=cfg_in.deriv_root,
+        task=cfg_in.task,
+        analyze_channels=cfg_in.analyze_channels,
+        data_type=cfg_in.data_type
+    )
+    cfg_out.conditions = {
+        'lemon': ('eyes/closed', 'eyes/open', 'eyes'),
+        'chbp': ('eyes/closed', 'eyes/open', 'eyes'),
+        'tuab': ('rest',),
+        'camcan': ('rest',)
+    }[dataset]
+
+    cfg_out.session = ''
+    sessions = cfg_in.sessions
+    if dataset in ('tuab', 'camcan'):
+        cfg_out.session = 'ses-' + sessions[0]
+
+    subjects_df = pd.read_csv(cfg_out.bids_root / "participants.tsv", sep='\t')
+    subjects = sorted(sub for sub in subjects_df.participant_id if
+                      (cfg_out.deriv_root / sub / cfg_out.session /
+                       cfg_out.data_type).exists())
+    return cfg_out, subjects
+
+
+def run_subject(subject, cfg, condition):
+    task = cfg.task
+    deriv_root = cfg.deriv_root
+    data_type = cfg.data_type
+    session = cfg.session
+    if session.startswith('ses-'):
+        session = session.lstrip('ses-')
+
+    bp_args = dict(root=deriv_root, subject=subject,
+                   datatype=data_type, processing="autoreject",
+                   task=task,
+                   check=False, suffix="epo")
+    if session:
+        bp_args['session'] = session
+    bp = BIDSPath(**bp_args)
+
+    if not bp.fpath.exists():
         return 'no file'
 
-    epochs = mne.read_epochs(fname, proj=False)
+    epochs = mne.read_epochs(bp, proj=False)
     if not any(condition in cc for cc in epochs.event_id):
         return 'condition not found'
 
     try:
-        if FEATURE_TYPE == 'fb_covs':
+        if feature_type == 'fb_covs':
             out = extract_fb_covs(epochs, condition)
-        elif FEATURE_TYPE == 'handcrafted':
+        elif feature_type == 'handcrafted':
             out = extract_handcrafted_feats(epochs, condition)
         else:
             NotImplementedError()
@@ -144,36 +175,47 @@ def run_subject(subject, task, condition):
     return out
 
 
-for condition in conditions:
-    print(f"Computing {FEATURE_TYPE} features on {dataset} for '{condition}'")
-    features = Parallel(n_jobs=N_JOBS)(
-        delayed(run_subject)(sub, task=task, condition=condition)
-        for sub in subjects)
+for dataset, feature_type in tasks:
+    cfg, subjects = prepare_dataset(dataset)
+    N_JOBS = cfg.N_JOBS if not n_jobs else n_jobs
+    if DEBUG:
+        subjects = subjects[:1]
+        N_JOBS = 1
+        frequency_bands = {"alpha": (8.0, 15.0)}
+        hc_selected_funcs = ['std']
+        hc_func_params = dict()
 
-    out = {sub: ff for sub, ff in zip(subjects, features)
-           if not isinstance(ff, str)}
+    for condition in cfg.conditions:
+        print(
+            f"Computing {feature_type} features on {dataset} for '{condition}'")
+        features = Parallel(n_jobs=N_JOBS)(
+            delayed(run_subject)(sub.split('-')[1], cfg=cfg,
+            condition=condition) for sub in subjects)
 
-    label = None
-    if dataset == "chbp":
-        label = 'pooled'
-        if '/' in condition:
-            label = f'eyes-{condition.split("/")[1]}'
-    elif dataset == "tuab":
-        label = 'rest'
+        out = {sub: ff for sub, ff in zip(subjects, features)
+               if not isinstance(ff, str)}
 
-    out_fname = deriv_root / f'features_{FEATURE_TYPE}_{label}.h5'
-    log_out_fname = deriv_root / f'feature_{FEATURE_TYPE}_{label}-log.csv'
+        label = None
+        if dataset in ("chbp", "lemon"):
+            label = 'pooled'
+            if '/' in condition:
+                label = f'eyes-{condition.split("/")[1]}'
+        elif dataset in ("tuab", 'camcan'):
+            label = 'rest'
 
-    mne.externals.h5io.write_hdf5(
-        out_fname,
-        out,
-        overwrite=True
-    )
-    print(f'Features saved under {out_fname}.')
+        out_fname = cfg.deriv_root / f'features_{feature_type}_{label}.h5'
+        log_out_fname = (
+            cfg.deriv_root / f'feature_{feature_type}_{label}-log.csv')
 
-    logging = ['OK' if not isinstance(ff, str) else ff for sub, ff in
-               zip(subjects, features)]
-    out_log = pd.DataFrame({"ok": logging, "subject": subjects})
-    out_log.to_csv(log_out_fname)
-    print(f'Log saved under {log_out_fname}.')
+        mne.externals.h5io.write_hdf5(
+            out_fname,
+            out,
+            overwrite=True
+        )
+        print(f'Features saved under {out_fname}.')
 
+        logging = ['OK' if not isinstance(ff, str) else ff for sub, ff in
+                   zip(subjects, features)]
+        out_log = pd.DataFrame({"ok": logging, "subject": subjects})
+        out_log.to_csv(log_out_fname)
+        print(f'Log saved under {log_out_fname}.')

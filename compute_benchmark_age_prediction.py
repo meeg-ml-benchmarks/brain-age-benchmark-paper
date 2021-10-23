@@ -21,7 +21,7 @@ from sklearn.impute import SimpleImputer
 
 import coffeine
 DATASETS = ['chbp', 'lemon', 'tuab', 'camcan']
-BENCHMARKS = ['dummy', 'filterbank-riemann', 'handcrafted']
+BENCHMARKS = ['dummy', 'filterbank-riemann', 'filterbank-source', 'handcrafted']
 parser = argparse.ArgumentParser(description='Compute features.')
 parser.add_argument(
     '-d', '--dataset',
@@ -71,6 +71,17 @@ bench_config = {  # put other benchmark related config here
         },
         'feature_map': 'fb_covs',
     },
+    'filterbank-source':{
+        'frequency_bands': {
+            "low": (0.1, 1),
+            "delta": (1, 4),
+            "theta": (4.0, 8.0),
+            "alpha": (8.0, 15.0),
+            "beta_low": (15.0, 26.0),
+            "beta_mid": (26.0, 35.0),
+            "beta_high": (35.0, 49)
+        },
+        'feature_map': 'source_power'},
     'handcrafted': {'feature_map': 'handcrafted'}
 }
 
@@ -158,6 +169,24 @@ def load_benchmark_data(dataset, benchmark, condition=None):
             filter_bank_transformer, StandardScaler(),
             RidgeCV(alphas=np.logspace(-5, 10, 100)))
 
+    elif benchmark == 'filterbank-source':
+        frequency_bands = bench_cfg['frequency_bands']
+        features = mne.externals.h5io.read_hdf5(
+            deriv_root / f'features_{feature_label}_{condition_}.h5')
+        source_power = [features[sub] for sub in df_subjects.index]
+        source_power = np.array(source_power)
+        X = pd.DataFrame(
+            {band: list(source_power[:,ii])for ii, band in
+             enumerate(frequency_bands)})
+        y = df_subjects.age.values
+        filter_bank_transformer = coffeine.make_filter_bank_transformer(
+            names=list(frequency_bands),
+            method='log_diag'
+        )
+        model = make_pipeline(
+            filter_bank_transformer, StandardScaler(),
+            RidgeCV(alphas=np.logspace(-5, 10, 100)))
+
     elif benchmark == 'handcrafted':
         features = mne.externals.h5io.read_hdf5(
             deriv_root / f'features_handcrafted_{condition_}.h5')
@@ -177,9 +206,6 @@ def load_benchmark_data(dataset, benchmark, condition=None):
             SimpleImputer(),
             rf_reg
         )
-
-    elif benchmark == 'source_power':
-        raise NotImplementedError('not yet available')
 
     elif benchmark == 'dummy':
         y = df_subjects.age.values

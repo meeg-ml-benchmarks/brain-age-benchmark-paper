@@ -8,6 +8,14 @@ study_name = "age-prediction-benchmark"
 N_JOBS = 30
 bids_root = Path("/storage/store2/data/TUAB-healthy-bids2")
 deriv_root = Path("/storage/store3/derivatives/TUAB-healthy-bids2")
+subjects_dir = Path('/storage/store/data/camcan-mne/freesurfer')
+
+source_info_path_update = {'processing': 'autoreject',
+                           'suffix': 'epo'}
+
+inverse_targets = []
+
+noise_cov = 'ad-hoc'
 
 # subjects = ['00002355']
 
@@ -45,6 +53,9 @@ epochs_tmax = 10
 rest_epochs_duration = 10.
 rest_epochs_overlap = 0.
 baseline = None
+
+run_source_estimation = True
+use_template_mri = True
 
 event_repeated = "drop"
 l_trans_bandwidth = "auto"

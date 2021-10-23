@@ -1,6 +1,4 @@
 import pathlib
-import mne
-##
 
 study_name = "age-prediction-benchmark"
 
@@ -8,6 +6,15 @@ bids_root = pathlib.Path(
     '/storage/store/data/camcan/BIDSsep/rest')
 
 deriv_root = pathlib.Path('/storage/store3/work/camcan-bids/derivatives')
+
+subjects_dir = pathlib.Path('/storage/store/data/camcan-mne/freesurfer')
+
+source_info_path_update = {'processing': 'autoreject',
+                           'suffix': 'epo'}
+
+inverse_targets = []
+
+noise_cov = 'ad-hoc'
 
 task = 'rest'
 sessions = ['rest']  # keep empty for code flow
@@ -68,6 +75,8 @@ mf_ctc_fname = '/storage/store/data/camcan-mne/Cam-CAN_ct_sparse.fif'
 find_flat_channels_meg = True
 find_noisy_channels_meg = True
 use_maxwell_filter = True
+run_source_estimation = True
+use_template_mri = True
 
 event_repeated = "drop"
 l_trans_bandwidth = "auto"

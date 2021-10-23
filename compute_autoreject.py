@@ -31,7 +31,7 @@ DEBUG = False
 def prepare_dataset(dataset):
     config_map = {'chbp': "config_chbp_eeg",
                   'lemon': "config_lemon_eeg",
-                  'tuab': "config_tuab",
+                  'tuab': "config_tuab_eeg",
                   'camcan': "config_camcan_meg"}
     if dataset not in config_map:
         raise ValueError(

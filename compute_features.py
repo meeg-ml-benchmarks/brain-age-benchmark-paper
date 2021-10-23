@@ -140,7 +140,7 @@ def extract_source_power(bp, subject, subjects_dir, covs):
 def prepare_dataset(dataset):
     config_map = {'chbp': "config_chbp_eeg",
                   'lemon': "config_lemon_eeg",
-                  'tuab': "config_tuab",
+                  'tuab': "config_tuab_eeg",
                   'camcan': "config_camcan_meg"}
     if dataset not in config_map:
         raise ValueError(
@@ -210,7 +210,6 @@ def run_subject(subject, cfg, condition):
                     epochs.apply_proj()
             covs = extract_fb_covs(epochs, condition)
             covs = covs['covs']
-            import pdb; pdb.set_trace()
             out = extract_source_power(bp, subject, cfg.subjects_dir, covs)
         else:
             NotImplementedError()

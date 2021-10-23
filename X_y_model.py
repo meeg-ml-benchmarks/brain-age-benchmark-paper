@@ -189,10 +189,11 @@ def create_dataset(fnames, ages, n_jobs=1):
     braindecode.datasets.BaseConcatDataset
         A braindecode dataset.
     """
-    datasets = Parallel(n_jobs=n_jobs)(
-        delayed(create_windows_ds_from_mne_epochs)(
-            fname, rec_i, age, 'age')
-        for rec_i, (fname, age) in enumerate(zip(fnames, ages)))
+    datasets = []
+    for rec_i, (fname, age) in enumerate(zip(fnames, ages)):
+        ds = create_windows_ds_from_mne_epochs(
+            fname=fname, rec_i=rec_i, age=age, target_name='age')
+        datasets.append(ds)
     return BaseConcatDataset(datasets)
 
 

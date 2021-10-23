@@ -228,6 +228,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
             model_name=model_name,
             n_epochs=n_epochs,
             batch_size=batch_size,
+            n_jobs=N_JOBS,
             seed=seed,
         )
         fit_params = {'epochs': n_epochs}
@@ -240,6 +241,10 @@ def run_benchmark_cv(benchmark, dataset):
     X, y, model, fit_params = load_benchmark_data(
         dataset=dataset, benchmark=benchmark)
     if benchmark in ['shallow', 'deep']:
+        # do not run cv in parallel. we assume to only have 1 GPU
+        # instead use n_jobs to (lazily) load data in parallel such that the GPU
+        # does not have to wait
+        N_JOBS = 1
         from X_y_model import (
             # overwrite splitting on epoch level by splitting on recording level
             BraindecodeKFold as KFold,

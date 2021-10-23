@@ -5,6 +5,8 @@ import pandas as pd
 from sklearn.model_selection import KFold
 from sklearn.metrics import mean_absolute_error, r2_score
 
+from mne_bids import BIDSPath
+
 from skorch.callbacks import LRScheduler, BatchScoring
 from skorch.helper import SliceDataset
 
@@ -38,11 +40,14 @@ class BraindecodeKFold(KFold):
                          random_state=random_state)
 
     def split(self, X, y=None, groups=None):
+        assert isinstance(X, SliceDataset)
+        assert isinstance(y, CustomSliceDataset)
         # split recordings instead of windows
-        split = super().split(X=X.dataset.datasets, y=y, groups=groups)
+        split = super().split(
+            X=X.dataset.datasets, y=y.dataset.datasets, groups=groups)
         rec = X.dataset.get_metadata()['rec']
         # the index of DataFrame rec now corresponds to the id of windows
-        rec = rec.reset_index(drop=True)
+        rec.reset_index(inplace=True, drop=True)
         for train_i, valid_i in split:
             # map recording ids to window ids
             train_window_i = rec[rec.isin(train_i)].index.to_list()
@@ -57,14 +62,14 @@ class RecScorer(object):
         self.metric = metric
 
     def __call__(self, estimator, X, y):
-        y_pred = estimator.predict(X)
         # X is the valid slice of the original dataset and only contains those
-        # examples from X that are speccified in X.indices
+        # windows that are specified in X.indices
+        y_pred = estimator.predict(X)
+        # X.dataset is the entire braindecode dataset, so train _and_ valid
         df = X.dataset.get_metadata()
-        # X.dataset is the entire dataset, so resetting the index gives as an
-        # enumeration of windows
+        # resetting the index of df gives an enumeration of all windows
         df.reset_index(inplace=True, drop=True)
-        # get metadata of valid_set
+        # get metadata of valid_set only
         df = df.iloc[X.indices]
         # make sure the length of the df of the valid_set, the provided ground
         # truth labels, and the number of predictions match
@@ -74,7 +79,8 @@ class RecScorer(object):
         # average the predictions (and labels) by recording
         df = df.groupby('rec').mean()
         # create rec scores
-        return self.metric(y_true=df['y_true'], y_pred=df['y_pred'])
+        score = self.metric(y_true=df['y_true'], y_pred=df['y_pred'])
+        return score
 
 
 def make_braindecode_scorer(metric):
@@ -175,9 +181,7 @@ def create_dataset(fnames, ages):
             epochs=epochs, description=description, target_name='age')
         datasets.append(ds)
     ds = BaseConcatDataset(datasets)
-    x, y, ind = ds[0]
-    n_channels, n_samples_in_window = x.shape
-    return ds, n_channels, n_samples_in_window
+    return ds
 
 
 def create_model(model_name, window_size, n_channels, seed):
@@ -330,10 +334,30 @@ def X_y_model(
     estimator: braindecode.EEGRegressor
         A braindecode estimator implementing fit/transform.
     """
-    ds, n_channels, window_size = create_dataset(
+    ds = create_dataset(
         fnames=fnames,
         ages=ages,
     )
+
+    # --------------------------------------------------------------------------
+    # TODO: delete this section
+    # TODO: somehow channel selection does not work. we expect 21 channels for
+    # tuab after preprocessing, we get 30, 36, ....
+    from braindecode.preprocessing import preprocess, Preprocessor
+    analyze_channels = ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1',
+                        'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2',
+                        'FZ', 'CZ', 'PZ']
+    ch_names = ['-'.join([ch, 'REF']) for ch in analyze_channels]
+    ds = preprocess(
+        ds,
+        preprocessors=[Preprocessor('pick_channels', ch_names=ch_names)],
+    )
+    # --------------------------------------------------------------------------
+
+    # load a single window to get number of eeg channels and time points for
+    # model creation
+    x, y, ind = ds[0]
+    n_channels, window_size = x.shape
     model, lr, weight_decay = create_model(
         model_name=model_name,
         window_size=window_size,
@@ -352,3 +376,43 @@ def X_y_model(
     # and y in 2d
     y = CustomSliceDataset(ds, idx=1)
     return X, y, estimator
+
+
+def get_fif_paths(dataset, cfg):
+    """Create a list of fif files of given dataset.
+
+    Parameters
+    ----------
+    dataset: str
+        The name of the dataset.
+    cfg: dict
+
+    """
+    cfg.session = ''
+    sessions = cfg.sessions
+    if dataset in ('tuab', 'camcan'):
+        cfg.session = 'ses-' + sessions[0]
+
+    session = cfg.session
+    if session.startswith('ses-'):
+        session = session.lstrip('ses-')
+
+    subjects_df = pd.read_csv(cfg.bids_root / "participants.tsv", sep='\t')
+
+    subjects = sorted(
+        sub.split('-')[1] for sub in subjects_df.participant_id if
+        (cfg.deriv_root / sub / cfg.session /
+         cfg.data_type).exists())
+
+    fpaths = []
+    for subject in subjects:
+        bp_args = dict(root=cfg.deriv_root, subject=subject,
+                       datatype=cfg.data_type, processing="clean",
+                       task=cfg.task,
+                       check=False, suffix="epo")
+
+        if session:
+            bp_args['session'] = session
+        bp = BIDSPath(**bp_args)
+        fpaths.append(bp.fpath)
+    return fpaths

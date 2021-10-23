@@ -55,7 +55,7 @@ print(f"Datasets: {', '.join(datasets)}")
 
 config_map = {'chbp': "config_chbp_eeg",
               'lemon': "config_lemon_eeg",
-              'tuab': "config_tuab",
+              'tuab': "config_tuab_eeg",
               'camcan': "config_camcan_meg"}
 
 bench_config = {  # put other benchmark related config here
@@ -193,20 +193,17 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         X = [features[sub]['feats'] for sub in df_subjects.index]
         y = df_subjects.age.values
         param_grid = {'max_depth': [4, 6, 8, 16, 32, None],
-                      'max_features': ['log2', 'sqrt', None]}
+                      'max_features': ['log2', 'sqrt']}
         rf_reg = GridSearchCV(
             RandomForestRegressor(n_estimators=1000,
                                   random_state=42),
             param_grid=param_grid,
-            scoring='neg_mean_absolute_error',
             iid=False,
             cv=5)
         model = make_pipeline(
             FunctionTransformer(aggregate_features, kw_args={'func': 'mean'}),
-            SimpleImputer(),
             rf_reg
         )
-
     elif benchmark == 'dummy':
         y = df_subjects.age.values
         X = np.zeros(shape=(len(y), 1))

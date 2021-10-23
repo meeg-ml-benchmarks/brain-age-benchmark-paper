@@ -1,12 +1,12 @@
-import importlib
 import argparse
-from types import SimpleNamespace
 from joblib import Parallel, delayed
 import pandas as pd
 
 import mne
 from mne_bids import BIDSPath
 import autoreject
+
+from utils import prepare_dataset
 
 DATASETS = ['chbp', 'lemon', 'tuab', 'camcan']
 parser = argparse.ArgumentParser(description='Compute autoreject.')
@@ -26,42 +26,6 @@ if datasets is None:
 print(f"Datasets: {', '.join(datasets)}")
 
 DEBUG = False
-
-
-def prepare_dataset(dataset):
-    config_map = {'chbp': "config_chbp_eeg",
-                  'lemon': "config_lemon_eeg",
-                  'tuab': "config_tuab_eeg",
-                  'camcan': "config_camcan_meg"}
-    if dataset not in config_map:
-        raise ValueError(
-            f"We don't know the dataset '{dataset}' you requested.")
-
-    cfg_in = importlib.import_module(config_map[dataset])
-    cfg_out = SimpleNamespace(
-        bids_root=cfg_in.bids_root,
-        deriv_root=cfg_in.deriv_root,
-        task=cfg_in.task,
-        analyze_channels=cfg_in.analyze_channels,
-        data_type=cfg_in.data_type
-    )
-    cfg_out.conditions = {
-        'lemon': ('eyes/closed', 'eyes/open', 'eyes'),
-        'chbp': ('eyes/closed', 'eyes/open', 'eyes'),
-        'tuab': ('rest',),
-        'camcan': ('rest',)
-    }[dataset]
-
-    cfg_out.session = ''
-    sessions = cfg_in.sessions
-    if dataset in ('tuab', 'camcan'):
-        cfg_out.session = 'ses-' + sessions[0]
-
-    subjects_df = pd.read_csv(cfg_out.bids_root / "participants.tsv", sep='\t')
-    subjects = sorted(sub for sub in subjects_df.participant_id if
-                      (cfg_out.deriv_root / sub / cfg_out.session /
-                       cfg_out.data_type).exists())
-    return cfg_out, subjects
 
 
 def run_subject(subject, cfg):

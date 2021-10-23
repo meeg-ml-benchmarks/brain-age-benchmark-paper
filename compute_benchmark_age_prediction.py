@@ -140,7 +140,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
     df_subjects = df_subjects.set_index('participant_id')
     # now we read in the processing log to see for which participants we have EEG
 
-    if benchmark != 'dummy':
+    if benchmark not in ['dummy', 'shallow', 'deep']:
         bench_cfg = bench_config[benchmark]
         feature_label = bench_cfg['feature_map']
         feature_log = f'feature_{feature_label}_{condition_}-log.csv'
@@ -149,7 +149,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         df_subjects = df_subjects.loc[good_subjects]
         print(f"Found data from {len(good_subjects)} subjects")
 
-    X, y, model = None, None, None
+    X, y, model, fit_params = None, None, None, None
     if benchmark == 'filterbank-riemann':
         frequency_bands = bench_cfg['frequency_bands']
         features = mne.externals.h5io.read_hdf5(
@@ -215,15 +215,8 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         model = DummyRegressor(strategy="mean")
 
     elif benchmark in ['shallow', 'deep']:
-        from X_y_model import X_y_model
-        from X_y_model import (
-            # overwrite splitting on epoch level by splitting on recording level
-            BraindecodeKFold as KFold,
-            # overwrite scoring on epoch level by scoring on recording level
-            make_braindecode_scorer as make_scorer,
-        )
-        # TODO: insert file paths corresponding to the age values in df_subjects
-        fif_fnames = []
+        from X_y_model import X_y_model, get_fif_paths
+        fif_fnames = get_fif_paths(dataset, cfg)
         ages = df_subjects.age.values
         model_name = benchmark
         n_epochs = 35
@@ -237,23 +230,31 @@ def load_benchmark_data(dataset, benchmark, condition=None):
             batch_size=batch_size,
             seed=seed,
         )
-    return X, y, model
+        fit_params = {'epochs': n_epochs}
+    return X, y, model, fit_params
 
 # %% Run CV
 
 
 def run_benchmark_cv(benchmark, dataset):
-    X, y, model = load_benchmark_data(
+    X, y, model, fit_params = load_benchmark_data(
         dataset=dataset, benchmark=benchmark)
+    if benchmark in ['shallow', 'deep']:
+        from X_y_model import (
+            # overwrite splitting on epoch level by splitting on recording level
+            BraindecodeKFold as KFold,
+            # overwrite scoring on epoch level by scoring on recording level
+            make_braindecode_scorer as make_scorer,
+        )
     cv = KFold(n_splits=10, shuffle=True, random_state=42)
     results = list()
     metrics = [mean_absolute_error, r2_score]
     scoring = {m.__name__: make_scorer(m) for m in metrics}
     scores = cross_validate(model, X, y, cv=cv, scoring=scoring,
-                            n_jobs=N_JOBS)
+                            n_jobs=N_JOBS, fit_params=fit_params)
     results = pd.DataFrame(
         {'MAE': scores['test_mean_absolute_error'],
-         'r2': scores['test_r2'],
+         'r2': scores['test_r2_score'],
          'fit_time': scores['fit_time'],
          'score_time': scores['score_time']}
     ) 

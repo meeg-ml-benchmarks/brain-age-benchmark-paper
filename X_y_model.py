@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import KFold
 from sklearn.metrics import mean_absolute_error, r2_score
+from joblib import Parallel, delayed
 
 from mne_bids import BIDSPath
 
@@ -14,6 +15,11 @@ from braindecode.datasets import WindowsDataset, BaseConcatDataset
 from braindecode.util import set_random_seeds
 from braindecode.models import ShallowFBCSPNet, Deep4Net
 from braindecode import EEGRegressor
+
+
+# TODO: apply data scaling from volts to microvolts
+# TODO: apply target scaling to zero mean unit variance
+# TODO: make somehow sure that stuff is correct
 
 
 # TODO: fix this in braindecode? target should be 2dim
@@ -55,6 +61,29 @@ class BraindecodeKFold(KFold):
             yield train_window_i, valid_window_i
 
 
+def predict_recordings(estimator, X, y):
+    """Instead of windows, predict recording by averaging all window predictions
+    and labels.
+    """
+    # X is the valid slice of the original dataset and only contains those
+    # windows that are specified in X.indices
+    y_pred = estimator.predict(X)
+    # X.dataset is the entire braindecode dataset, so train _and_ valid
+    df = X.dataset.get_metadata()
+    # resetting the index of df gives an enumeration of all windows
+    df.reset_index(inplace=True, drop=True)
+    # get metadata of valid_set only
+    df = df.iloc[X.indices]
+    # make sure the length of the df of the valid_set, the provided ground
+    # truth labels, and the number of predictions match
+    assert len(df) == len(y) == len(y_pred)
+    df['y_true'] = y
+    df['y_pred'] = y_pred
+    # average the predictions (and labels) by recording
+    df = df.groupby('rec').mean()
+    return df['y_true'], df['y_pred']
+
+
 class RecScorer(object):
     """Compute recording scores by averaging all window predictions and labels
      of a recording."""
@@ -62,24 +91,9 @@ class RecScorer(object):
         self.metric = metric
 
     def __call__(self, estimator, X, y):
-        # X is the valid slice of the original dataset and only contains those
-        # windows that are specified in X.indices
-        y_pred = estimator.predict(X)
-        # X.dataset is the entire braindecode dataset, so train _and_ valid
-        df = X.dataset.get_metadata()
-        # resetting the index of df gives an enumeration of all windows
-        df.reset_index(inplace=True, drop=True)
-        # get metadata of valid_set only
-        df = df.iloc[X.indices]
-        # make sure the length of the df of the valid_set, the provided ground
-        # truth labels, and the number of predictions match
-        assert len(df) == len(y) == len(y_pred)
-        df['y_true'] = y
-        df['y_pred'] = y_pred
-        # average the predictions (and labels) by recording
-        df = df.groupby('rec').mean()
+        y_true, y_pred = predict_recordings(estimator=estimator, X=X, y=y)
         # create rec scores
-        score = self.metric(y_true=df['y_true'], y_pred=df['y_pred'])
+        score = self.metric(y_true=y_true, y_pred=y_pred)
         return score
 
 
@@ -100,19 +114,21 @@ def make_braindecode_scorer(metric):
 
 
 def create_windows_ds_from_mne_epochs(
-        epochs,
-        description=None,
+        fname,
+        rec_i,
+        age,
         target_name=None,
 ):
     """Create a braindecode WindowsDataset from mne.Epochs.
 
     Parameters
     ----------
-    epochs: mne.Epochs
-
-    description: pandas.Series | dict | None
-        Additional description of the epochs. Can hold e.g. the id of the
-        recording, or the decoding target.
+    fname: str
+        The fif file path name.
+    rec_i: int
+        The absolute id of the recording.
+    age: int
+        The age of the subject of this recording.
     target_name: str | None
         The name of the target. If not None, has to be an entry in description.
 
@@ -121,6 +137,8 @@ def create_windows_ds_from_mne_epochs(
     braindecode.datasets.WindowsDataset
         A braindecode WindowsDataset.
     """
+    epochs = mne.read_epochs(fname=fname, preload=False)
+    description = {'fname': fname, 'rec': rec_i, 'age': age}
     target = -1
     if description is not None and target_name is not None:
         assert target_name in description, (
@@ -153,7 +171,7 @@ def create_windows_ds_from_mne_epochs(
     return ds
 
 
-def create_dataset(fnames, ages):
+def create_dataset(fnames, ages, n_jobs=1):
     """Read all epochs .fif files from given fnames. Convert to braindecode
     dataset and add ages as targets.
 
@@ -163,25 +181,19 @@ def create_dataset(fnames, ages):
         A list of .fif files.
     ages: array-like
         Subject ages.
+    n_jobs: int
+        The number of jobs to read fif files in parallel.
 
     Returns
     -------
     braindecode.datasets.BaseConcatDataset
         A braindecode dataset.
-    n_channels: int
-        The number of data channels in epochs.
-    n_samples_in_window: int
-        The number of time samples in epochs.
     """
-    datasets = []
-    for rec_i, (fname, age) in enumerate(zip(fnames, ages)):
-        epochs = mne.read_epochs(fname=fname)
-        description = {'fname': fname, 'rec': rec_i, 'age': age}
-        ds = create_windows_ds_from_mne_epochs(
-            epochs=epochs, description=description, target_name='age')
-        datasets.append(ds)
-    ds = BaseConcatDataset(datasets)
-    return ds
+    datasets = Parallel(n_jobs=n_jobs)(
+        delayed(create_windows_ds_from_mne_epochs)(
+            fname, rec_i, age, 'age')
+        for rec_i, (fname, age) in enumerate(zip(fnames, ages)))
+    return BaseConcatDataset(datasets)
 
 
 def create_model(model_name, window_size, n_channels, seed):
@@ -249,7 +261,7 @@ def create_model(model_name, window_size, n_channels, seed):
 
 
 def create_estimator(
-        model, n_epochs, batch_size, lr, weight_decay,
+        model, n_epochs, batch_size, lr, weight_decay, n_jobs=1,
 ):
     """Create am estimator (EEGRegressor) that implements fit/transform.
 
@@ -266,6 +278,8 @@ def create_estimator(
         The learning rate to be used in network training.
     weight_decay: float
         The weight decay to be used in network training.
+    n_jobs: int
+        The number of workers to load data in parallel.
 
     Returns
     -------
@@ -294,6 +308,8 @@ def create_estimator(
         batch_size=batch_size,
         callbacks=callbacks,
         device=device,
+        iterator_train__num_workers=n_jobs,
+        iterator_valid__num_workers=n_jobs,
     )
     return estimator
 
@@ -304,6 +320,7 @@ def X_y_model(
         model_name,
         n_epochs,
         batch_size,
+        n_jobs,
         seed,
 ):
     """Create am estimator (EEGRegressor) that implements fit/transform and a
@@ -322,6 +339,8 @@ def X_y_model(
         in the creation of a learning rate scheduler).
     batch_size: int
         The size of training batches.
+    n_jobs: int
+        The number of workers to load data in parallel.
     seed: int
         The seed to be used to initialize the network.
 
@@ -337,6 +356,7 @@ def X_y_model(
     ds = create_dataset(
         fnames=fnames,
         ages=ages,
+        n_jobs=n_jobs,
     )
 
     # --------------------------------------------------------------------------
@@ -370,6 +390,7 @@ def X_y_model(
         batch_size=batch_size,
         lr=lr,
         weight_decay=weight_decay,
+        n_jobs=n_jobs,
     )
     # since ds returns a 3-tuple, use skorch SliceDataset to get X
     X = SliceDataset(ds, idx=0)

@@ -13,9 +13,14 @@ subjects_dir = Path('/storage/store/data/camcan-mne/freesurfer')
 source_info_path_update = {'processing': 'autoreject',
                            'suffix': 'epo'}
 
+eeg_template_montage = mne.channels.make_standard_montage("standard_1005")
+eeg_template_montage.rename_channels(
+    {ch: ch + '-REF' for ch in eeg_template_montage.ch_names})
+
 inverse_targets = []
 
 noise_cov = 'ad-hoc'
+eeg_reference = ['average']  # Tuab has a custom reference
 
 # subjects = ['00002355']
 
@@ -36,7 +41,6 @@ ch_types = ["eeg"]
 l_freq = 0.1
 h_freq = 49
 
-eeg_reference = []
 
 find_breaks = False
 
@@ -69,8 +73,8 @@ shortest_event = 1
 log_level = "info"
 
 mne_log_level = "info"
-# on_error = 'continue'
+on_error = 'continue'
 # on_error = "continue"
 
-on_error = 'abort'
+# on_error = 'abort'
 # on_error = 'debug'

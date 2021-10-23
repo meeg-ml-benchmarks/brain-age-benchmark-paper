@@ -203,8 +203,14 @@ def run_subject(subject, cfg, condition):
         elif feature_type == 'handcrafted':
             out = extract_handcrafted_feats(epochs, condition)
         elif feature_type == 'source_power':
+            # XXX unkown projection is a problem
+            if False:
+                if epochs.info['custom_ref_applied']:
+                    epochs.set_eeg_reference('average', projection=True)
+                    epochs.apply_proj()
             covs = extract_fb_covs(epochs, condition)
             covs = covs['covs']
+            import pdb; pdb.set_trace()
             out = extract_source_power(bp, subject, cfg.subjects_dir, covs)
         else:
             NotImplementedError()

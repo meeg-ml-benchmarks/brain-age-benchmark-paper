@@ -93,10 +93,6 @@ def run_subject(subject, cfg):
     if any(ch.endswith('-REF') for ch in epochs.ch_names):
         epochs.rename_channels(
             {ch: ch.rstrip('-REF') for ch in epochs.ch_names})
-        eeg_template_montage = mne.channels.make_standard_montage(
-            "standard_1005")
-        epochs.pick_channels(analyze_channels)
-        epochs.set_montage(eeg_template_montage, match_case=False)
 
     if analyze_channels:
         epochs.pick_channels(analyze_channels)

@@ -165,11 +165,6 @@ def run_subject(subject, cfg, condition):
         elif feature_type == 'handcrafted':
             out = extract_handcrafted_feats(epochs, condition)
         elif feature_type == 'source_power':
-            # XXX unkown projection is a problem
-            if False:
-                if epochs.info['custom_ref_applied']:
-                    epochs.set_eeg_reference('average', projection=True)
-                    epochs.apply_proj()
             covs = extract_fb_covs(epochs, condition)
             covs = covs['covs']
             out = extract_source_power(bp, subject, cfg.subjects_dir, covs)
@@ -191,7 +186,7 @@ for dataset, feature_type in tasks:
         hc_selected_funcs = ['std']
         hc_func_params = dict()
 
-    for condition in cfg.conditions:
+    for condition in cfg.feature_conditions:
         print(
             f"Computing {feature_type} features on {dataset} for '{condition}'")
         features = Parallel(n_jobs=N_JOBS)(

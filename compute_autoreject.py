@@ -52,6 +52,7 @@ def run_subject(subject, cfg):
     epochs = mne.read_epochs(fname, proj=False)
     has_conditions = any(cond in epochs.event_id for cond in
                          conditions)
+
     if not has_conditions:
         return 'no event'
     if any(ch.endswith('-REF') for ch in epochs.ch_names):
@@ -63,6 +64,11 @@ def run_subject(subject, cfg):
 
     ar = autoreject.AutoReject(n_jobs=1, cv=5)
     epochs = ar.fit_transform(epochs)
+    # important do do this after autorject but befor source localization
+    # particularly important as TUAB needs to be re-referenced
+    # but on the other hand we want benchmarks to be comparable, hence,
+    # re-reference all
+    epochs.set_eeg_reference('average')
 
     bp_out = bp.copy().update(
         processing="autoreject",

@@ -20,7 +20,7 @@ eeg_template_montage.rename_channels(
 inverse_targets = []
 
 noise_cov = 'ad-hoc'
-eeg_reference = 'average'  # Tuab has a custom reference
+eeg_reference = []  # Tuab has a custom reference
 
 # subjects = ['00002355']
 

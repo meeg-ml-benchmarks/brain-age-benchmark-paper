@@ -38,7 +38,7 @@ eeg_template_montage.rename_channels({"FFT7h": "FFC7h", "FFT8h": "FFC8h"})
 l_freq = 0.1
 h_freq = 49
 
-eeg_reference = 'average'
+eeg_reference = []
 
 find_breaks = False
 

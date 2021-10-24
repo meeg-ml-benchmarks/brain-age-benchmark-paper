@@ -36,7 +36,7 @@ eeg_template_montage = mne.channels.make_standard_montage("standard_1005")
 l_freq = 0.1
 h_freq = 49
 
-eeg_reference = 'average'
+eeg_reference = []
 
 eog_channels = ["Fp1"]
 

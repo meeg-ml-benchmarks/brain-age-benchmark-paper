@@ -4,6 +4,9 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import KFold
 from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.pipeline import make_pipeline
+from sklearn.base import TransformerMixin
+from sklearn.preprocessing import StandardScaler
 from joblib import Parallel, delayed
 
 from mne_bids import BIDSPath
@@ -17,8 +20,6 @@ from braindecode.models import ShallowFBCSPNet, Deep4Net
 from braindecode import EEGRegressor
 
 
-# TODO: apply data scaling from volts to microvolts
-# TODO: apply target scaling to zero mean unit variance
 # TODO: make somehow sure that stuff is correct
 
 
@@ -45,6 +46,27 @@ class BraindecodeKFold(KFold):
             train_window_i = rec[rec.isin(train_i)].index.to_list()
             valid_window_i = rec[rec.isin(valid_i)].index.to_list()
             yield train_window_i, valid_window_i
+
+
+class TargetStandardScaler(TransformerMixin):
+    """A transformer that scales the _targets_ to zero mean unit variance."""
+    def __init__(self):
+        self.mean = None
+        self.std = None
+
+    def fit(self, X, y):
+        self.mean = np.mean(y)
+        self.std = np.std(y)
+        return self
+
+    def transform(self, X, y=None):
+        return X, (y - self.mean) / self.std
+
+    def fit_transform(self, X, y=None):
+        return self.fit(X, y).transform(X, y)
+
+    def inverse_transform(self, X, y=None):
+        return X, (y * self.std) + self.mean
 
 
 def predict_recordings(estimator, X, y):
@@ -104,6 +126,7 @@ def create_windows_ds_from_mne_epochs(
         rec_i,
         age,
         target_name=None,
+        transform=None,
 ):
     """Create a braindecode WindowsDataset from mne.Epochs.
 
@@ -153,18 +176,24 @@ def create_windows_ds_from_mne_epochs(
         windows=epochs,
         description=description,
         targets_from='metadata',
+        transform=transform,
     )
     return ds
 
 
-def age_to_2d(y):
-    """Cast singe integers to valid 2-dimensional scikit-learn regression
+def target_to_2d(y):
+    """Cast singe integer targets to valid 2-dimensional scikit-learn regression
      targets.
     """
     return np.array(y).reshape(1, -1)
 
 
-def create_dataset(fnames, ages, n_jobs=1):
+def scale_data(x, factor=1e6):
+    """Multiply data x with factor."""
+    return x * factor
+
+
+def create_dataset(fnames, ages):
     """Read all epochs .fif files from given fnames. Convert to braindecode
     dataset and add ages as targets.
 
@@ -174,8 +203,6 @@ def create_dataset(fnames, ages, n_jobs=1):
         A list of .fif files.
     ages: array-like
         Subject ages.
-    n_jobs: int
-        The number of jobs to read fif files in parallel.
 
     Returns
     -------
@@ -183,13 +210,18 @@ def create_dataset(fnames, ages, n_jobs=1):
         A braindecode dataset.
     """
     datasets = []
+    # TODO: the idea was to parallelize reading of fif files with joblib
+    #  parallel, however, mne.read_epochs does not work with that
+    # sequential reading might be slow
     for rec_i, (fname, age) in enumerate(zip(fnames, ages)):
         ds = create_windows_ds_from_mne_epochs(
-            fname=fname, rec_i=rec_i, age=age, target_name='age')
+            fname=fname, rec_i=rec_i, age=age, target_name='age',
+            # apply a transform that converts data from volts to microvolts
+            transform=scale_data,
+        )
         datasets.append(ds)
-    ds = BaseConcatDataset(datasets)
     # apply a target transform that converts: age -> [[age]]
-    ds.target_transform = age_to_2d
+    ds = BaseConcatDataset(datasets, target_transform=target_to_2d)
     return ds
 
 
@@ -377,6 +409,14 @@ def X_y_model(
     X = SliceDataset(ds, idx=0)
     # and y in 2d
     y = SliceDataset(ds, idx=1)
+    #
+    """
+    pipe = Pipeline([
+        ('age_to_2d', target_scaler),
+        ('volts_to_microvolts', data_scaler),
+        ('clf', estimator),
+    ])
+    """
     return X, y, estimator
 
 

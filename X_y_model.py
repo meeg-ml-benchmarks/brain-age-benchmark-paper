@@ -48,25 +48,22 @@ class BraindecodeKFold(KFold):
             yield train_window_i, valid_window_i
 
 
-class TargetStandardScaler(TransformerMixin):
+class TargetStandardScaler(StandardScaler):
     """A transformer that scales the _targets_ to zero mean unit variance."""
-    def __init__(self):
-        self.mean = None
-        self.std = None
+    def __init__(self, *args, **kwargs):
+        super().__init__(self, args, kwargs)
 
     def fit(self, X, y):
-        self.mean = np.mean(y)
-        self.std = np.std(y)
-        return self
+        return super().fit(X=y, y=None)
 
     def transform(self, X, y=None):
-        return X, (y - self.mean) / self.std
+        return X, super().fit(X=y, y=None)
 
     def fit_transform(self, X, y=None):
-        return self.fit(X, y).transform(X, y)
+        return super().fit(X, y).transform(X, y)
 
     def inverse_transform(self, X, y=None):
-        return X, (y * self.std) + self.mean
+        return X, super().inverse_transform(X=y, y=None)
 
 
 def predict_recordings(estimator, X, y):
@@ -181,16 +178,24 @@ def create_windows_ds_from_mne_epochs(
     return ds
 
 
-def target_to_2d(y):
-    """Cast singe integer targets to valid 2-dimensional scikit-learn regression
-     targets.
-    """
-    return np.array(y).reshape(1, -1)
+class TargetReshaper(object):
+    """On call apply func to y, e.g. np.reshape(y, -1, 1)."""
+    def __init__(self, func, *args, **kwargs):
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+
+    def __call__(self, y):
+        return self.func(y, self.args, self.kwargs)
 
 
-def scale_data(x, factor=1e6):
-    """Multiply data x with factor."""
-    return x * factor
+class DataScaler(object):
+    """On call multiply x with scaling_factor."""
+    def __init__(self, scaling_factor):
+        self.scaling_factor = scaling_factor
+
+    def __call__(self, x):
+        return x * self.scaling_factor
 
 
 def create_dataset(fnames, ages):
@@ -217,7 +222,7 @@ def create_dataset(fnames, ages):
         ds = create_windows_ds_from_mne_epochs(
             fname=fname, rec_i=rec_i, age=age, target_name='age',
             # apply a transform that converts data from volts to microvolts
-            transform=scale_data,
+            transform=DataScaler(scaling_factor=1e6),
         )
         datasets.append(ds)
     # apply a target transform that converts: age -> [[age]]
@@ -385,7 +390,6 @@ def X_y_model(
     ds = create_dataset(
         fnames=fnames,
         ages=ages,
-        n_jobs=n_jobs,
     )
     # load a single window to get number of eeg channels and time points for
     # model creation
@@ -409,14 +413,6 @@ def X_y_model(
     X = SliceDataset(ds, idx=0)
     # and y in 2d
     y = SliceDataset(ds, idx=1)
-    #
-    """
-    pipe = Pipeline([
-        ('age_to_2d', target_scaler),
-        ('volts_to_microvolts', data_scaler),
-        ('clf', estimator),
-    ])
-    """
     return X, y, estimator
 
 

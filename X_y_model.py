@@ -4,10 +4,8 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import KFold
 from sklearn.metrics import mean_absolute_error, r2_score
-from sklearn.pipeline import make_pipeline
-from sklearn.base import TransformerMixin
 from sklearn.preprocessing import StandardScaler
-from joblib import Parallel, delayed
+from sklearn.compose import TransformedTargetRegressor
 
 from mne_bids import BIDSPath
 
@@ -21,6 +19,19 @@ from braindecode import EEGRegressor
 
 
 # TODO: make somehow sure that stuff is correct
+
+
+class CustomSliceDataset(SliceDataset):
+    """A modified skorch.helper.SliceDataset to cast singe integers to valid
+    2-dimensional scikit-learn regression targets.
+    """
+    # y has to be 2 dimensional, so call y.reshape(-1, 1)
+    def __init__(self, dataset, idx=0, indices=None):
+        super().__init__(dataset=dataset, idx=idx, indices=indices)
+
+    def __getitem__(self, i):
+        item = super().__getitem__(i)
+        return np.array(item).reshape(-1, 1)
 
 
 class BraindecodeKFold(KFold):
@@ -46,24 +57,6 @@ class BraindecodeKFold(KFold):
             train_window_i = rec[rec.isin(train_i)].index.to_list()
             valid_window_i = rec[rec.isin(valid_i)].index.to_list()
             yield train_window_i, valid_window_i
-
-
-class TargetStandardScaler(StandardScaler):
-    """A transformer that scales the _targets_ to zero mean unit variance."""
-    def __init__(self, *args, **kwargs):
-        super().__init__(self, args, kwargs)
-
-    def fit(self, X, y):
-        return super().fit(X=y, y=None)
-
-    def transform(self, X, y=None):
-        return X, super().fit(X=y, y=None)
-
-    def fit_transform(self, X, y=None):
-        return super().fit(X, y).transform(X, y)
-
-    def inverse_transform(self, X, y=None):
-        return X, super().inverse_transform(X=y, y=None)
 
 
 def predict_recordings(estimator, X, y):
@@ -137,6 +130,8 @@ def create_windows_ds_from_mne_epochs(
         The age of the subject of this recording.
     target_name: str | None
         The name of the target. If not None, has to be an entry in description.
+    transform: callable
+        A transform to be applied to the data on __getitem__.
 
     Returns
     -------
@@ -178,17 +173,6 @@ def create_windows_ds_from_mne_epochs(
     return ds
 
 
-class TargetReshaper(object):
-    """On call apply func to y, e.g. np.reshape(y, -1, 1)."""
-    def __init__(self, func, *args, **kwargs):
-        self.func = func
-        self.args = args
-        self.kwargs = kwargs
-
-    def __call__(self, y):
-        return self.func(y, self.args, self.kwargs)
-
-
 class DataScaler(object):
     """On call multiply x with scaling_factor."""
     def __init__(self, scaling_factor):
@@ -196,6 +180,10 @@ class DataScaler(object):
 
     def __call__(self, x):
         return x * self.scaling_factor
+
+
+def target_to_2d(y):
+    return np.array(y).reshape(-1, 1)
 
 
 def create_dataset(fnames, ages):
@@ -221,12 +209,17 @@ def create_dataset(fnames, ages):
     for rec_i, (fname, age) in enumerate(zip(fnames, ages)):
         ds = create_windows_ds_from_mne_epochs(
             fname=fname, rec_i=rec_i, age=age, target_name='age',
-            # apply a transform that converts data from volts to microvolts
+            # add a transform that converts data from volts to microvolts
             transform=DataScaler(scaling_factor=1e6),
         )
         datasets.append(ds)
     # apply a target transform that converts: age -> [[age]]
-    ds = BaseConcatDataset(datasets, target_transform=target_to_2d)
+    # why does the transform not work?
+    # currently the TransformedTargetRegressor with StandardScaler will do the
+    # job. If it is removed, computations will fail due to target in incorrect
+    # shape. Adding the target_transform here did not solve the problem.
+    # Instead a CustomSliceDataset is needed that does the reshaping
+    ds = BaseConcatDataset(datasets)  #, target_transform=target_to_2d)
     return ds
 
 
@@ -409,10 +402,22 @@ def X_y_model(
         weight_decay=weight_decay,
         n_jobs=n_jobs,
     )
+    # Use a StandardScaler to scale targets to zero mean unit variance
+    # has the positive side effect to cast the targets to the correct shape,
+    # such that neither transform=target_to_2d in BaseConcatDatasset nor
+    # a CustomSliceDataset is required.
+    """
+    estimator = TransformedTargetRegressor(
+        regressor=estimator,
+        transformer=StandardScaler(),
+    )
+    """
     # since ds returns a 3-tuple, use skorch SliceDataset to get X
     X = SliceDataset(ds, idx=0)
     # and y in 2d
-    y = SliceDataset(ds, idx=1)
+    y = CustomSliceDataset(ds, idx=1)
+    # also does not work
+    # y.transform = target_to_2d
     return X, y, estimator
 
 

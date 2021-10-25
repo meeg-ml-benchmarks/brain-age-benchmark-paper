@@ -241,6 +241,10 @@ def run_benchmark_cv(benchmark, dataset):
     X, y, model, fit_params = load_benchmark_data(
         dataset=dataset, benchmark=benchmark)
     if benchmark in ['shallow', 'deep']:
+        # turn off most of the mne logging. due to lazy loading we have
+        # uncountable logging outputs that do cover the training logging output
+        # as well as might slow down code execution
+        mne.set_log_level('ERROR')
         # do not run cv in parallel. we assume to only have 1 GPU
         # instead use n_jobs to (lazily) load data in parallel such that the GPU
         # does not have to wait

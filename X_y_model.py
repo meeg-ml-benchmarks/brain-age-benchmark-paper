@@ -22,20 +22,6 @@ from braindecode import EEGRegressor
 # TODO: make somehow sure that stuff is correct
 
 
-# TODO: fix this in braindecode? target should be 2dim
-class CustomSliceDataset(SliceDataset):
-    """A modified skorch.helper.SliceDataset to cast singe integers to valid
-    2-dimensional scikit-learn regression targets.
-    """
-    # y has to be 2 dimensional, so call y.reshape(-1, 1)
-    def __init__(self, dataset, idx=0, indices=None):
-        super().__init__(dataset=dataset, idx=idx, indices=indices)
-
-    def __getitem__(self, i):
-        item = super().__getitem__(i)
-        return np.array(item).reshape(-1, 1)
-
-
 class BraindecodeKFold(KFold):
     """An adapted sklearn.model_selection.KFold that gets braindecode datasets
     of length n_compute_windows but splits based on the number of original
@@ -171,6 +157,13 @@ def create_windows_ds_from_mne_epochs(
     return ds
 
 
+def age_to_2d(y):
+    """Cast singe integers to valid 2-dimensional scikit-learn regression
+     targets.
+    """
+    return np.array(y).reshape(1, -1)
+
+
 def create_dataset(fnames, ages, n_jobs=1):
     """Read all epochs .fif files from given fnames. Convert to braindecode
     dataset and add ages as targets.
@@ -194,7 +187,10 @@ def create_dataset(fnames, ages, n_jobs=1):
         ds = create_windows_ds_from_mne_epochs(
             fname=fname, rec_i=rec_i, age=age, target_name='age')
         datasets.append(ds)
-    return BaseConcatDataset(datasets)
+    ds = BaseConcatDataset(datasets)
+    # apply a target transform that converts: age -> [[age]]
+    ds.target_transform = age_to_2d
+    return ds
 
 
 def create_model(model_name, window_size, n_channels, seed):
@@ -359,22 +355,6 @@ def X_y_model(
         ages=ages,
         n_jobs=n_jobs,
     )
-
-    # --------------------------------------------------------------------------
-    # TODO: delete this section
-    # TODO: somehow channel selection does not work. we expect 21 channels for
-    # tuab after preprocessing, we get 30, 36, ....
-    from braindecode.preprocessing import preprocess, Preprocessor
-    analyze_channels = ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1',
-                        'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2',
-                        'FZ', 'CZ', 'PZ']
-    ch_names = ['-'.join([ch, 'REF']) for ch in analyze_channels]
-    ds = preprocess(
-        ds,
-        preprocessors=[Preprocessor('pick_channels', ch_names=ch_names)],
-    )
-    # --------------------------------------------------------------------------
-
     # load a single window to get number of eeg channels and time points for
     # model creation
     x, y, ind = ds[0]
@@ -396,7 +376,7 @@ def X_y_model(
     # since ds returns a 3-tuple, use skorch SliceDataset to get X
     X = SliceDataset(ds, idx=0)
     # and y in 2d
-    y = CustomSliceDataset(ds, idx=1)
+    y = SliceDataset(ds, idx=1)
     return X, y, estimator
 
 
@@ -429,7 +409,7 @@ def get_fif_paths(dataset, cfg):
     fpaths = []
     for subject in subjects:
         bp_args = dict(root=cfg.deriv_root, subject=subject,
-                       datatype=cfg.data_type, processing="clean",
+                       datatype=cfg.data_type, processing="autoreject",
                        task=cfg.task,
                        check=False, suffix="epo")
 

@@ -19,6 +19,7 @@ from braindecode import EEGRegressor
 
 
 # TODO: make somehow sure that stuff is correct
+SCALE_TARGETS = False
 
 
 class CustomSliceDataset(SliceDataset):
@@ -45,7 +46,7 @@ class BraindecodeKFold(KFold):
 
     def split(self, X, y=None, groups=None):
         assert isinstance(X, SliceDataset)
-        assert isinstance(y, CustomSliceDataset)
+        assert isinstance(y, SliceDataset)
         # split recordings instead of windows
         split = super().split(
             X=X.dataset.datasets, y=y.dataset.datasets, groups=groups)
@@ -402,20 +403,24 @@ def X_y_model(
         weight_decay=weight_decay,
         n_jobs=n_jobs,
     )
-    # Use a StandardScaler to scale targets to zero mean unit variance
-    # has the positive side effect to cast the targets to the correct shape,
-    # such that neither transform=target_to_2d in BaseConcatDatasset nor
-    # a CustomSliceDataset is required.
-    """
-    estimator = TransformedTargetRegressor(
-        regressor=estimator,
-        transformer=StandardScaler(),
-    )
-    """
+    if SCALE_TARGETS:
+        # Use a StandardScaler to scale targets to zero mean unit variance
+        # has the positive side effect to cast the targets to the correct shape,
+        # such that neither transform=target_to_2d in BaseConcatDatasset nor
+        # a CustomSliceDataset is required.
+        estimator = TransformedTargetRegressor(
+            regressor=estimator,
+            transformer=StandardScaler(),
+        )
     # since ds returns a 3-tuple, use skorch SliceDataset to get X
+    # X = FixedSliceDataset(ds, idx=0)
     X = SliceDataset(ds, idx=0)
     # and y in 2d
-    y = CustomSliceDataset(ds, idx=1)
+    # y = FixedSliceDataset(ds, idx=1)
+    if not SCALE_TARGETS:
+        y = CustomSliceDataset(ds, idx=1)
+    else:
+        y = SliceDataset(ds, idx=1)
     # also does not work
     # y.transform = target_to_2d
     return X, y, estimator
@@ -459,3 +464,14 @@ def get_fif_paths(dataset, cfg):
         bp = BIDSPath(**bp_args)
         fpaths.append(bp.fpath)
     return fpaths
+
+
+class FixedSliceDataset(SliceDataset):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def __getitem__(self, i):
+        v = super().__getitem__(i)
+        if isinstance(v, SliceDataset):
+            v.transform = self.transform
+        return v

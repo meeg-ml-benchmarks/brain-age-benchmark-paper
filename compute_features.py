@@ -155,10 +155,10 @@ def run_subject(subject, cfg, condition):
     if not bp.fpath.exists():
         return 'no file'
 
-    epochs = mne.read_epochs(bp, proj=False)
+    epochs = mne.read_epochs(bp, proj=False, preload=False)
     if not any(condition in cc for cc in epochs.event_id):
         return 'condition not found'
-
+    out = None
     try:
         if feature_type == 'fb_covs':
             out = extract_fb_covs(epochs, condition)

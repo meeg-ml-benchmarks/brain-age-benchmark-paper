@@ -68,8 +68,7 @@ def run_subject(subject, cfg):
     # particularly important as TUAB needs to be re-referenced
     # but on the other hand we want benchmarks to be comparable, hence,
     # re-reference all
-    epochs.set_eeg_reference('average')
-
+    epochs.set_eeg_reference('average', projection=True).apply_proj()
     bp_out = bp.copy().update(
         processing="autoreject",
         extension='.fif'

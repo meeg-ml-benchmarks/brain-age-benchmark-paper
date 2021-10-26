@@ -279,6 +279,7 @@ def run_benchmark_cv(benchmark, dataset):
          'r2': scores['test_r2_score'],
          'fit_time': scores['fit_time'],
          'score_time': scores['score_time'],
+         'dataset': dataset,
          'benchmark': benchmark}
     ) 
     for metric in ('MAE', 'r2'):

@@ -18,12 +18,10 @@ from sklearn.pipeline import make_pipeline
 from sklearn.model_selection import KFold, GridSearchCV
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.impute import SimpleImputer
-from sklearn.metrics import make_scorer, r2_score, mean_absolute_error
 
 import coffeine
 DATASETS = ['chbp', 'lemon', 'tuab', 'camcan']
-BENCHMARKS = ['dummy', 'filterbank-riemann', 'filterbank-source', 'handcrafted',
-              'shallow', 'deep']
+BENCHMARKS = ['dummy', 'filterbank-riemann', 'filterbank-source', 'handcrafted']
 parser = argparse.ArgumentParser(description='Compute features.')
 parser.add_argument(
     '-d', '--dataset',
@@ -140,7 +138,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
     df_subjects = df_subjects.set_index('participant_id')
     # now we read in the processing log to see for which participants we have EEG
 
-    if benchmark not in ['dummy', 'shallow', 'deep']:
+    if benchmark != 'dummy':
         bench_cfg = bench_config[benchmark]
         feature_label = bench_cfg['feature_map']
         feature_log = f'feature_{feature_label}_{condition_}-log.csv'
@@ -149,7 +147,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         df_subjects = df_subjects.loc[good_subjects]
         print(f"Found data from {len(good_subjects)} subjects")
 
-    X, y, model, fit_params = None, None, None, None
+    X, y, model = None, None, None
     if benchmark == 'filterbank-riemann':
         frequency_bands = bench_cfg['frequency_bands']
         features = mne.externals.h5io.read_hdf5(
@@ -214,56 +212,25 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         X = np.zeros(shape=(len(y), 1))
         model = DummyRegressor(strategy="mean")
 
-    elif benchmark in ['shallow', 'deep']:
-        from X_y_model import X_y_model, get_fif_paths
-        fif_fnames = get_fif_paths(dataset, cfg)
-        ages = df_subjects.age.values
-        model_name = benchmark
-        n_epochs = 35
-        batch_size = 64
-        seed = 20211022
-        X, y, model = X_y_model(
-            fnames=fif_fnames,
-            ages=ages,
-            model_name=model_name,
-            n_epochs=n_epochs,
-            batch_size=batch_size,
-            n_jobs=N_JOBS,
-            seed=seed,
-        )
-        fit_params = {'epochs': n_epochs}
-    return X, y, model, fit_params
+    elif benchmark == 'deep':
+        raise NotImplementedError('not yet available')
+
+    return X, y, model
 
 # %% Run CV
 
 
 def run_benchmark_cv(benchmark, dataset):
-    X, y, model, fit_params = load_benchmark_data(
+    X, y, model = load_benchmark_data(
         dataset=dataset, benchmark=benchmark)
-    if benchmark in ['shallow', 'deep']:
-        # turn off most of the mne logging. due to lazy loading we have
-        # uncountable logging outputs that do cover the training logging output
-        # as well as might slow down code execution
-        mne.set_log_level('ERROR')
-        # do not run cv in parallel. we assume to only have 1 GPU
-        # instead use n_jobs to (lazily) load data in parallel such that the GPU
-        # does not have to wait
-        N_JOBS = 1
-        from X_y_model import (
-            # overwrite splitting on epoch level by splitting on recording level
-            BraindecodeKFold as KFold,
-            # overwrite scoring on epoch level by scoring on recording level
-            make_braindecode_scorer as make_scorer,
-        )
     cv = KFold(n_splits=10, shuffle=True, random_state=42)
     results = list()
-    metrics = [mean_absolute_error, r2_score]
-    scoring = {m.__name__: make_scorer(m) for m in metrics}
-    scores = cross_validate(model, X, y, cv=cv, scoring=scoring,
-                            n_jobs=N_JOBS, fit_params=fit_params)
+    metrics = ['neg_mean_absolute_error', 'r2']
+    scores = cross_validate(model, X, y, cv=cv, scoring=metrics,
+                            n_jobs=N_JOBS)
     results = pd.DataFrame(
-        {'MAE': scores['test_mean_absolute_error'],
-         'r2': scores['test_r2_score'],
+        {'MAE': scores['test_neg_mean_absolute_error'] * -1,
+         'r2': scores['test_r2'],
          'fit_time': scores['fit_time'],
          'score_time': scores['score_time']}
     ) 

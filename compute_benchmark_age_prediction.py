@@ -270,7 +270,9 @@ def run_benchmark_cv(benchmark, dataset):
     scoring = {m.__name__: make_scorer(m) for m in metrics}
     print("Running cross validation ...")
     scores = cross_validate(model, X, y, cv=cv, scoring=scoring,
-                            n_jobs=N_JOBS, fit_params=fit_params)
+                            n_jobs=(1 if benchmark == 'filterbank-source'
+                                    else N_JOBS),  # XXX too big for joblib
+                            fit_params=fit_params)
     print("... done.")
     results = pd.DataFrame(
         {'MAE': scores['test_mean_absolute_error'],
@@ -288,6 +290,6 @@ def run_benchmark_cv(benchmark, dataset):
 for dataset, benchmark in tasks:
     print(f"Now running '{benchmark}' on '{dataset}' data")
     results_df = run_benchmark_cv(benchmark, dataset)
-    if results_df:
+    if results_df is not None:
         results_df.to_csv(
             f"./results/benchmark-{benchmark}_dataset-{dataset}.csv")

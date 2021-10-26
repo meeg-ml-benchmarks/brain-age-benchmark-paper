@@ -8,16 +8,14 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 import mne
-from sklearn.model_selection import train_test_split
 from sklearn.linear_model import RidgeCV    
-from sklearn.model_selection import cross_validate
 from sklearn.preprocessing import StandardScaler
 from sklearn.dummy import DummyRegressor
 from sklearn.preprocessing import FunctionTransformer
 from sklearn.pipeline import make_pipeline
-from sklearn.model_selection import KFold, GridSearchCV
+from sklearn.model_selection import (KFold, GridSearchCV, cross_validate,
+                                     train_test_split)
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.impute import SimpleImputer
 from sklearn.metrics import make_scorer, r2_score, mean_absolute_error
 
 import coffeine
@@ -140,6 +138,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
     df_subjects = df_subjects.set_index('participant_id')
     # now we read in the processing log to see for which participants we have EEG
 
+    X, y, model, fit_params = None, None, None, None
     if benchmark not in ['dummy', 'shallow', 'deep']:
         bench_cfg = bench_config[benchmark]
         feature_label = bench_cfg['feature_map']
@@ -148,8 +147,9 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         good_subjects = proc_log.query('ok == "OK"').subject
         df_subjects = df_subjects.loc[good_subjects]
         print(f"Found data from {len(good_subjects)} subjects")
+        if len(good_subjects) == 0:
+            return X, y, model, fit_params
 
-    X, y, model, fit_params = None, None, None, None
     if benchmark == 'filterbank-riemann':
         frequency_bands = bench_cfg['frequency_bands']
         features = mne.externals.h5io.read_hdf5(
@@ -237,6 +237,15 @@ def load_benchmark_data(dataset, benchmark, condition=None):
 def run_benchmark_cv(benchmark, dataset):
     X, y, model, fit_params = load_benchmark_data(
         dataset=dataset, benchmark=benchmark)
+    if X is None:
+        print(
+            "no data found for benchmark "
+            f"'{benchmark}' on dataset '{dataset}'")
+        return
+    
+    metrics = [mean_absolute_error, r2_score]
+    results = list()
+    cv_params = dict(n_splits=10, shuffle=True, random_state=42)
     if benchmark in ['shallow', 'deep']:
         # turn off most of the mne logging. due to lazy loading we have
         # uncountable logging outputs that do cover the training logging output
@@ -245,24 +254,30 @@ def run_benchmark_cv(benchmark, dataset):
         # do not run cv in parallel. we assume to only have 1 GPU
         # instead use n_jobs to (lazily) load data in parallel such that the GPU
         # does not have to wait
-        N_JOBS = 1
+        if N_JOBS > 1:
+            raise ValueError(
+                "Please do not use joblib for the deep benchmarks.")
         from X_y_model import (
             # overwrite splitting on epoch level by splitting on recording level
-            BraindecodeKFold as KFold,
+            BraindecodeKFold,
             # overwrite scoring on epoch level by scoring on recording level
-            make_braindecode_scorer as make_scorer,
+            make_braindecode_scorer,
         )
-    cv = KFold(n_splits=10, shuffle=True, random_state=42)
-    results = list()
-    metrics = [mean_absolute_error, r2_score]
+        cv = BraindecodeKFold(**cv_params)
+        scoring = {m.__name__: make_braindecode_scorer(m)
+                   for m in metrics}
+    cv = KFold(**cv_params)
     scoring = {m.__name__: make_scorer(m) for m in metrics}
+    print("Running cross validation ...")
     scores = cross_validate(model, X, y, cv=cv, scoring=scoring,
                             n_jobs=N_JOBS, fit_params=fit_params)
+    print("... done.")
     results = pd.DataFrame(
         {'MAE': scores['test_mean_absolute_error'],
          'r2': scores['test_r2_score'],
          'fit_time': scores['fit_time'],
-         'score_time': scores['score_time']}
+         'score_time': scores['score_time'],
+         'benchmark': benchmark}
     ) 
     for metric in ('MAE', 'r2'):
         print(f'{metric}({benchmark}, {dataset}) = {results[metric].mean()}')
@@ -273,5 +288,6 @@ def run_benchmark_cv(benchmark, dataset):
 for dataset, benchmark in tasks:
     print(f"Now running '{benchmark}' on '{dataset}' data")
     results_df = run_benchmark_cv(benchmark, dataset)
-    results_df.to_csv(
-        f"./results/benchmark-{benchmark}_dataset-{dataset}.csv")
+    if results_df:
+        results_df.to_csv(
+            f"./results/benchmark-{benchmark}_dataset-{dataset}.csv")

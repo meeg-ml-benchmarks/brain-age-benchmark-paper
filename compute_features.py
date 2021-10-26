@@ -1,7 +1,5 @@
 import argparse
-import importlib
 from multiprocessing import Value
-from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -12,6 +10,8 @@ from mne_bids import BIDSPath
 import coffeine
 from mne_features.feature_extraction import extract_features
 from mne.minimum_norm import apply_inverse_cov
+
+from utils import prepare_dataset
 
 DATASETS = ['chbp', 'lemon', 'tuab', 'camcan']
 FEATURE_TYPE = ['fb_covs', 'handcrafted', 'source_power']
@@ -87,7 +87,6 @@ hc_func_params = {
     'pow_freq_bands__normalize': None,
 }
 
-
 def extract_fb_covs(epochs, condition):
     features, meta_info = coffeine.compute_features(
         epochs[condition], features=('covs',), n_fft=1024, n_overlap=512,
@@ -105,8 +104,7 @@ def extract_handcrafted_feats(epochs, condition):
     return out
 
 
-def extract_source_power(bp, subject, subjects_dir, covs):
-    info = mne.io.read_info(bp)
+def extract_source_power(bp, info, subject, subjects_dir, covs):
     fname_inv = bp.copy().update(suffix='inv',
                                  processing=None,
                                  extension='.fif')
@@ -134,44 +132,7 @@ def extract_source_power(bp, subject, subjects_dir, covs):
                                                     inv['src'],
                                                     mode="mean")
         result.append(np.diag(label_power[:,0]))
-    return result    
-
-
-def prepare_dataset(dataset):
-    config_map = {'chbp': "config_chbp_eeg",
-                  'lemon': "config_lemon_eeg",
-                  'tuab': "config_tuab",
-                  'camcan': "config_camcan_meg"}
-    if dataset not in config_map:
-        raise ValueError(
-            f"We don't know the dataset '{dataset}' you requested.")
-
-    cfg_in = importlib.import_module(config_map[dataset])
-    cfg_out = SimpleNamespace(
-        bids_root=cfg_in.bids_root,
-        deriv_root=cfg_in.deriv_root,
-        task=cfg_in.task,
-        analyze_channels=cfg_in.analyze_channels,
-        data_type=cfg_in.data_type,
-        subjects_dir=cfg_in.subjects_dir
-    )
-    cfg_out.conditions = {
-        'lemon': ('eyes/closed', 'eyes/open', 'eyes'),
-        'chbp': ('eyes/closed', 'eyes/open', 'eyes'),
-        'tuab': ('rest',),
-        'camcan': ('rest',)
-    }[dataset]
-
-    cfg_out.session = ''
-    sessions = cfg_in.sessions
-    if dataset in ('tuab', 'camcan'):
-        cfg_out.session = 'ses-' + sessions[0]
-
-    subjects_df = pd.read_csv(cfg_out.bids_root / "participants.tsv", sep='\t')
-    subjects = sorted(sub for sub in subjects_df.participant_id if
-                      (cfg_out.deriv_root / sub / cfg_out.session /
-                       cfg_out.data_type).exists())
-    return cfg_out, subjects
+    return result
 
 
 def run_subject(subject, cfg, condition):
@@ -193,19 +154,22 @@ def run_subject(subject, cfg, condition):
     if not bp.fpath.exists():
         return 'no file'
 
-    epochs = mne.read_epochs(bp, proj=False)
+    epochs = mne.read_epochs(bp, proj=False, preload=True)
     if not any(condition in cc for cc in epochs.event_id):
         return 'condition not found'
-
+    out = None
+    # make sure that no EOG/ECG made it into the selection
+    epochs.pick_types(**{data_type: True})
     try:
         if feature_type == 'fb_covs':
             out = extract_fb_covs(epochs, condition)
         elif feature_type == 'handcrafted':
             out = extract_handcrafted_feats(epochs, condition)
         elif feature_type == 'source_power':
-            covs = extract_fb_covs(epochs, condition)
+            covs = extract_fb_covs(epochs[:5], condition)
             covs = covs['covs']
-            out = extract_source_power(bp, subject, cfg.subjects_dir, covs)
+            out = extract_source_power(
+                bp, epochs.info, subject, cfg.subjects_dir, covs)
         else:
             NotImplementedError()
     except Exception as err:
@@ -224,7 +188,7 @@ for dataset, feature_type in tasks:
         hc_selected_funcs = ['std']
         hc_func_params = dict()
 
-    for condition in cfg.conditions:
+    for condition in cfg.feature_conditions:
         print(
             f"Computing {feature_type} features on {dataset} for '{condition}'")
         features = Parallel(n_jobs=N_JOBS)(

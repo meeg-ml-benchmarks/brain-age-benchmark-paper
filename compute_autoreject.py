@@ -1,12 +1,12 @@
-import importlib
 import argparse
-from types import SimpleNamespace
 from joblib import Parallel, delayed
 import pandas as pd
 
 import mne
 from mne_bids import BIDSPath
 import autoreject
+
+from utils import prepare_dataset
 
 DATASETS = ['chbp', 'lemon', 'tuab', 'camcan']
 parser = argparse.ArgumentParser(description='Compute autoreject.')
@@ -26,42 +26,6 @@ if datasets is None:
 print(f"Datasets: {', '.join(datasets)}")
 
 DEBUG = False
-
-
-def prepare_dataset(dataset):
-    config_map = {'chbp': "config_chbp_eeg",
-                  'lemon': "config_lemon_eeg",
-                  'tuab': "config_tuab",
-                  'camcan': "config_camcan_meg"}
-    if dataset not in config_map:
-        raise ValueError(
-            f"We don't know the dataset '{dataset}' you requested.")
-
-    cfg_in = importlib.import_module(config_map[dataset])
-    cfg_out = SimpleNamespace(
-        bids_root=cfg_in.bids_root,
-        deriv_root=cfg_in.deriv_root,
-        task=cfg_in.task,
-        analyze_channels=cfg_in.analyze_channels,
-        data_type=cfg_in.data_type
-    )
-    cfg_out.conditions = {
-        'lemon': ('eyes/closed', 'eyes/open', 'eyes'),
-        'chbp': ('eyes/closed', 'eyes/open', 'eyes'),
-        'tuab': ('rest',),
-        'camcan': ('rest',)
-    }[dataset]
-
-    cfg_out.session = ''
-    sessions = cfg_in.sessions
-    if dataset in ('tuab', 'camcan'):
-        cfg_out.session = 'ses-' + sessions[0]
-
-    subjects_df = pd.read_csv(cfg_out.bids_root / "participants.tsv", sep='\t')
-    subjects = sorted(sub for sub in subjects_df.participant_id if
-                      (cfg_out.deriv_root / sub / cfg_out.session /
-                       cfg_out.data_type).exists())
-    return cfg_out, subjects
 
 
 def run_subject(subject, cfg):
@@ -88,22 +52,23 @@ def run_subject(subject, cfg):
     epochs = mne.read_epochs(fname, proj=False)
     has_conditions = any(cond in epochs.event_id for cond in
                          conditions)
+
     if not has_conditions:
         return 'no event'
     if any(ch.endswith('-REF') for ch in epochs.ch_names):
         epochs.rename_channels(
             {ch: ch.rstrip('-REF') for ch in epochs.ch_names})
-        eeg_template_montage = mne.channels.make_standard_montage(
-            "standard_1005")
-        epochs.pick_channels(analyze_channels)
-        epochs.set_montage(eeg_template_montage, match_case=False)
 
     if analyze_channels:
         epochs.pick_channels(analyze_channels)
 
     ar = autoreject.AutoReject(n_jobs=1, cv=5)
     epochs = ar.fit_transform(epochs)
-
+    # important do do this after autorject but befor source localization
+    # particularly important as TUAB needs to be re-referenced
+    # but on the other hand we want benchmarks to be comparable, hence,
+    # re-reference all
+    epochs.set_eeg_reference('average', projection=True).apply_proj()
     bp_out = bp.copy().update(
         processing="autoreject",
         extension='.fif'

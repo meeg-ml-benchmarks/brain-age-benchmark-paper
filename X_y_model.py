@@ -333,6 +333,7 @@ def create_estimator(
         optimizer=torch.optim.AdamW,
         optimizer__lr=lr,
         optimizer__weight_decay=weight_decay,
+        train_split=None,  # we do splitting via KFold object in cross_validate
         batch_size=batch_size,
         callbacks=callbacks,
         device=device,

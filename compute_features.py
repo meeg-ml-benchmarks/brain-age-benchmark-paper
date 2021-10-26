@@ -104,8 +104,7 @@ def extract_handcrafted_feats(epochs, condition):
     return out
 
 
-def extract_source_power(bp, subject, subjects_dir, covs):
-    info = mne.io.read_info(bp)
+def extract_source_power(bp, info, subject, subjects_dir, covs):
     fname_inv = bp.copy().update(suffix='inv',
                                  processing=None,
                                  extension='.fif')
@@ -155,19 +154,22 @@ def run_subject(subject, cfg, condition):
     if not bp.fpath.exists():
         return 'no file'
 
-    epochs = mne.read_epochs(bp, proj=False, preload=False)
+    epochs = mne.read_epochs(bp, proj=False, preload=True)
     if not any(condition in cc for cc in epochs.event_id):
         return 'condition not found'
     out = None
+    # make sure that no EOG/ECG made it into the selection
+    epochs.pick_types(**{data_type: True})
     try:
         if feature_type == 'fb_covs':
             out = extract_fb_covs(epochs, condition)
         elif feature_type == 'handcrafted':
             out = extract_handcrafted_feats(epochs, condition)
         elif feature_type == 'source_power':
-            covs = extract_fb_covs(epochs, condition)
+            covs = extract_fb_covs(epochs[:5], condition)
             covs = covs['covs']
-            out = extract_source_power(bp, subject, cfg.subjects_dir, covs)
+            out = extract_source_power(
+                bp, epochs.info, subject, cfg.subjects_dir, covs)
         else:
             NotImplementedError()
     except Exception as err:

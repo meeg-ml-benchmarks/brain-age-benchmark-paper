@@ -336,8 +336,8 @@ def create_estimator(
         batch_size=batch_size,
         callbacks=callbacks,
         device=device,
-        iterator_train__num_workers=n_jobs,  # load data with several workers
-        iterator_valid__num_workers=n_jobs,  # load data with several workers
+        iterator_train__num_workers=n_jobs if n_jobs > 1 else 0,
+        iterator_valid__num_workers=n_jobs if n_jobs > 1 else 0,
     )
     return estimator
 

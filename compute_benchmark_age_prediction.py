@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 import mne
-from sklearn.linear_model import RidgeCV    
+from sklearn.linear_model import RidgeCV
 from sklearn.preprocessing import StandardScaler
 from sklearn.dummy import DummyRegressor
 from sklearn.preprocessing import FunctionTransformer
@@ -93,7 +93,7 @@ def aggregate_features(X, func='mean', axis=0):
 
 def load_benchmark_data(dataset, benchmark, condition=None):
     """Load the input features and outcome vectors for a given benchmark
-    
+
     Parameters
     ----------
     dataset: 'camcan' | 'chbp' | 'lemon' | 'tuh'
@@ -103,7 +103,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         Instead information for accsing the epoched data is provided.
     condition: 'eyes-closed' | 'eyes-open' | 'pooled' | 'rest'
         Specify from which sub conditions data should be loaded.
-    
+
     Returns
     -------
     X: numpy.ndarray or pandas.DataFrame of shape (n_subjects, n_predictors)
@@ -114,7 +114,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
     model: object
         The model to matching the benchmark-specific features.
         For `filter_bank` and `hand_crafted`, a scikit-learn estimator pipeline
-        is returned.  
+        is returned.
     """
     if dataset not in config_map:
         raise ValueError(
@@ -246,8 +246,7 @@ def run_benchmark_cv(benchmark, dataset):
     metrics = [mean_absolute_error, r2_score]
     results = list()
     cv_params = dict(n_splits=10, shuffle=True, random_state=42)
-    cv = KFold(**cv_params)
-    scoring = {m.__name__: make_scorer(m) for m in metrics}
+
     if benchmark in ['shallow', 'deep']:
         # turn off most of the mne logging. due to lazy loading we have
         # uncountable logging outputs that do cover the training logging output
@@ -262,6 +261,10 @@ def run_benchmark_cv(benchmark, dataset):
         cv = BraindecodeKFold(**cv_params)
         scoring = {m.__name__: make_braindecode_scorer(m)
                    for m in metrics}
+    else:
+        cv = KFold(**cv_params)
+        scoring = {m.__name__: make_scorer(m) for m in metrics}
+
     print("Running cross validation ...")
     scores = cross_validate(
         model, X, y, cv=cv, scoring=scoring,
@@ -276,7 +279,7 @@ def run_benchmark_cv(benchmark, dataset):
          'score_time': scores['score_time'],
          'dataset': dataset,
          'benchmark': benchmark}
-    ) 
+    )
     for metric in ('MAE', 'r2'):
         print(f'{metric}({benchmark}, {dataset}) = {results[metric].mean()}')
     return results

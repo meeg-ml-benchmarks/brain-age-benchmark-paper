@@ -266,10 +266,11 @@ def run_benchmark_cv(benchmark, dataset):
         scoring = {m.__name__: make_braindecode_scorer(m)
                    for m in metrics}
     print("Running cross validation ...")
-    scores = cross_validate(model, X, y, cv=cv, scoring=scoring,
-                            n_jobs=(1 if benchmark == 'filterbank-source'
-                                    else N_JOBS),  # XXX too big for joblib
-                            fit_params=fit_params)
+    scores = cross_validate(
+        model, X, y, cv=cv, scoring=scoring,
+        n_jobs=(1 if benchmark in ['filterbank-source', 'shallow', 'deep']
+                else N_JOBS),  # XXX too big for joblib
+        fit_params=fit_params)
     print("... done.")
     results = pd.DataFrame(
         {'MAE': scores['test_mean_absolute_error'],

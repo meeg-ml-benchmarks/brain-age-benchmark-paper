@@ -26,7 +26,7 @@ def prepare_dataset(dataset):
         'tuab': ('rest',),
         'camcan': ('rest',)
     }[dataset]
-    cfg_out.feature_conditions = {  # use for selecting data for features 
+    cfg_out.feature_conditions = {  # use for selecting data for features
         'lemon': ('eyes',),
         'chbp': ('eyes',),
         'tuab': ('rest',),
@@ -42,4 +42,5 @@ def prepare_dataset(dataset):
     subjects = sorted(sub for sub in subjects_df.participant_id if
                       (cfg_out.deriv_root / sub / cfg_out.session /
                        cfg_out.data_type).exists())
+
     return cfg_out, subjects

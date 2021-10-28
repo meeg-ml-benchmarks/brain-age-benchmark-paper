@@ -5,7 +5,7 @@ study_name = "age-prediction-benchmark"
 bids_root = pathlib.Path(
     '/storage/store/data/camcan/BIDSsep/rest')
 
-deriv_root = pathlib.Path('/storage/store3/derivatives/camcan-bids')
+deriv_root = pathlib.Path('/storage/store3/derivatives/camcan-bids/derivatives')
 
 subjects_dir = pathlib.Path('/storage/store/data/camcan-mne/freesurfer')
 

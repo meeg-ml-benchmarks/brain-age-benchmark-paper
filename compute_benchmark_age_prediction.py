@@ -225,7 +225,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
             model_name=model_name,
             n_epochs=n_epochs,
             batch_size=batch_size,
-            n_jobs=N_JOBS,
+            n_jobs=N_JOBS,  # use n_jobs for parallel lazy data loading
             seed=seed,
         )
         fit_params = {'epochs': n_epochs}
@@ -242,10 +242,12 @@ def run_benchmark_cv(benchmark, dataset):
             "no data found for benchmark "
             f"'{benchmark}' on dataset '{dataset}'")
         return
-    
+
     metrics = [mean_absolute_error, r2_score]
     results = list()
     cv_params = dict(n_splits=10, shuffle=True, random_state=42)
+    cv = KFold(**cv_params)
+    scoring = {m.__name__: make_scorer(m) for m in metrics}
     if benchmark in ['shallow', 'deep']:
         # turn off most of the mne logging. due to lazy loading we have
         # uncountable logging outputs that do cover the training logging output
@@ -254,9 +256,6 @@ def run_benchmark_cv(benchmark, dataset):
         # do not run cv in parallel. we assume to only have 1 GPU
         # instead use n_jobs to (lazily) load data in parallel such that the GPU
         # does not have to wait
-        if N_JOBS > 1:
-            raise ValueError(
-                "Please do not use joblib for the deep benchmarks.")
         from X_y_model import (
             # overwrite splitting on epoch level by splitting on recording level
             BraindecodeKFold,
@@ -266,8 +265,6 @@ def run_benchmark_cv(benchmark, dataset):
         cv = BraindecodeKFold(**cv_params)
         scoring = {m.__name__: make_braindecode_scorer(m)
                    for m in metrics}
-    cv = KFold(**cv_params)
-    scoring = {m.__name__: make_scorer(m) for m in metrics}
     print("Running cross validation ...")
     scores = cross_validate(model, X, y, cv=cv, scoring=scoring,
                             n_jobs=(1 if benchmark == 'filterbank-source'

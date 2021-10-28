@@ -18,7 +18,6 @@ from braindecode.models import ShallowFBCSPNet, Deep4Net
 from braindecode import EEGRegressor
 
 
-# TODO: make somehow sure that stuff is correct
 SCALE_TARGETS = False
 
 
@@ -45,8 +44,8 @@ class BraindecodeKFold(KFold):
                          random_state=random_state)
 
     def split(self, X, y=None, groups=None):
-        assert isinstance(X, SliceDataset)
-        assert isinstance(y, SliceDataset)
+        assert isinstance(X.dataset, BaseConcatDataset)
+        assert isinstance(y.dataset, BaseConcatDataset)
         # split recordings instead of windows
         split = super().split(
             X=X.dataset.datasets, y=y.dataset.datasets, groups=groups)
@@ -337,8 +336,8 @@ def create_estimator(
         batch_size=batch_size,
         callbacks=callbacks,
         device=device,
-        iterator_train__num_workers=n_jobs,
-        iterator_valid__num_workers=n_jobs,
+        iterator_train__num_workers=n_jobs,  # load data with several workers
+        iterator_valid__num_workers=n_jobs,  # load data with several workers
     )
     return estimator
 

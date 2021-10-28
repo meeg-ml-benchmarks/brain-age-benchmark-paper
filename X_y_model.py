@@ -18,27 +18,10 @@ from braindecode.models import ShallowFBCSPNet, Deep4Net
 from braindecode import EEGRegressor
 
 
-SCALE_TARGETS = False
-
-
-class CustomSliceDataset(SliceDataset):
-    """A modified skorch.helper.SliceDataset to cast singe integers to valid
-    2-dimensional scikit-learn regression targets.
-    """
-    # y has to be 2 dimensional, so call y.reshape(-1, 1)
-    def __init__(self, dataset, idx=0, indices=None):
-        super().__init__(dataset=dataset, idx=idx, indices=indices)
-
-    def __getitem__(self, i):
-        item = super().__getitem__(i)
-        return np.array(item).reshape(-1, 1)
-
-
 class BraindecodeKFold(KFold):
-    """An adapted sklearn.model_selection.KFold that gets braindecode datasets
-    of length n_compute_windows but splits based on the number of original
-    files.
-    """
+    """An adapted sklearn.model_selection.KFold that gets skorch SliceDatasets
+    holding braindecode datasets of length n_compute_windows but splits based
+    on the number of original recording files."""
     def __init__(self, n_splits=5, *, shuffle=False, random_state=None):
         super().__init__(n_splits=n_splits, shuffle=shuffle,
                          random_state=random_state)
@@ -62,9 +45,27 @@ class BraindecodeKFold(KFold):
 
 
 def predict_recordings(estimator, X, y):
-    """Instead of windows, predict recording by averaging all window predictions
-    and labels.
+    """Instead of windows, predict recordings by averaging all window
+    predictions and labels.
+
+    Parameters
+    ----------
+    estimator: sklearn.compose.TransformedTargetRegressor
+        An estimator holding a regressor and a target transformer.
+    X: skorch.helper.SliceDataset
+        A dataset that returns the data.
+    y: skorch.helper.SliceDataset
+        A dataset that returns the targets.
+
+    Returns
+    -------
+    y_true: np.ndarray
+        Ground truth recording labels.
+    y_pred: np.ndarray
+       Recording predictions.
     """
+    assert isinstance(X.dataset, BaseConcatDataset)
+    assert isinstance(y.dataset, BaseConcatDataset)
     # X is the valid slice of the original dataset and only contains those
     # windows that are specified in X.indices
     y_pred = estimator.predict(X)
@@ -81,7 +82,7 @@ def predict_recordings(estimator, X, y):
     df['y_pred'] = y_pred
     # average the predictions (and labels) by recording
     df = df.groupby('rec').mean()
-    return df['y_true'], df['y_pred']
+    return df['y_true'].values, df['y_pred'].values
 
 
 class RecScorer(object):
@@ -184,10 +185,6 @@ class DataScaler(object):
         return x * self.scaling_factor
 
 
-def target_to_2d(y):
-    return np.array(y).reshape(-1, 1)
-
-
 def create_dataset(fnames, ages):
     """Read all epochs .fif files from given fnames. Convert to braindecode
     dataset and add ages as targets.
@@ -212,16 +209,11 @@ def create_dataset(fnames, ages):
         ds = create_windows_ds_from_mne_epochs(
             fname=fname, rec_i=rec_i, age=age, target_name='age',
             # add a transform that converts data from volts to microvolts
+            # on-the-fly
             transform=DataScaler(scaling_factor=1e6),
         )
         datasets.append(ds)
-    # apply a target transform that converts: age -> [[age]]
-    # why does the transform not work?
-    # currently the TransformedTargetRegressor with StandardScaler will do the
-    # job. If it is removed, computations will fail due to target in incorrect
-    # shape. Adding the target_transform here did not solve the problem.
-    # Instead a CustomSliceDataset is needed that does the reshaping
-    ds = BaseConcatDataset(datasets)  #, target_transform=target_to_2d)
+    ds = BaseConcatDataset(datasets)
     return ds
 
 
@@ -359,8 +351,8 @@ def X_y_model(
         n_jobs,
         seed,
 ):
-    """Create am estimator (EEGRegressor) that implements fit/transform and a
-    braindecode dataset that returns X and y.
+    """Create am estimator (TransformedTargetRegressor) that implements
+    fit/transform and datasets that return X and y.
 
     Parameters
     ----------
@@ -384,10 +376,10 @@ def X_y_model(
     -------
     X: skorch.helper.SliceDataset
         A dataset that gives X.
-    y: skorch.helper.SliceDataset | CustomSliceDataset
+    y: skorch.helper.SliceDataset
         A modified SliceDataset that gives ages reshaped to (-1, 1).
-    estimator: braindecode.EEGRegressor
-        A braindecode estimator implementing fit/transform.
+    estimator: sklearn.compose.TransformedTargetRegressor
+        An estimator holding a regressor and a target transformer.
     """
     ds = create_dataset(
         fnames=fnames,
@@ -411,26 +403,18 @@ def X_y_model(
         weight_decay=weight_decay,
         n_jobs=n_jobs,
     )
-    if SCALE_TARGETS:
-        # Use a StandardScaler to scale targets to zero mean unit variance
-        # has the positive side effect to cast the targets to the correct shape,
-        # such that neither transform=target_to_2d in BaseConcatDatasset nor
-        # a CustomSliceDataset is required.
-        estimator = TransformedTargetRegressor(
-            regressor=estimator,
-            transformer=StandardScaler(),
-        )
+    # use a StandardScaler to scale targets to zero mean unit variance fold
+    # by fold to facilitate model training. in estimator.predict, the inverse
+    # transform is applied, such that we can compute scores based on unscaled
+    # targets
+    estimator = TransformedTargetRegressor(
+        regressor=estimator,
+        transformer=StandardScaler(),
+    )
     # since ds returns a 3-tuple, use skorch SliceDataset to get X
-    # X = FixedSliceDataset(ds, idx=0)
-    X = SliceDataset(ds, idx=0)
-    # and y in 2d
-    # y = FixedSliceDataset(ds, idx=1)
-    if not SCALE_TARGETS:
-        y = CustomSliceDataset(ds, idx=1)
-    else:
-        y = SliceDataset(ds, idx=1)
-    # also does not work
-    # y.transform = target_to_2d
+    X = SliceDataset(ds, idx=0, indices=None)
+    # and y
+    y = SliceDataset(ds, idx=1, indices=None)
     return X, y, estimator
 
 
@@ -443,6 +427,10 @@ def get_fif_paths(dataset, cfg):
         The name of the dataset.
     cfg: dict
 
+    Returns
+    -------
+    fpaths: list
+        A list of viable .fif files.
     """
     cfg.session = ''
     sessions = cfg.sessions
@@ -472,14 +460,3 @@ def get_fif_paths(dataset, cfg):
         bp = BIDSPath(**bp_args)
         fpaths.append(bp.fpath)
     return fpaths
-
-
-class FixedSliceDataset(SliceDataset):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def __getitem__(self, i):
-        v = super().__getitem__(i)
-        if isinstance(v, SliceDataset):
-            v.transform = self.transform
-        return v

@@ -56,6 +56,8 @@ class BraindecodeKFold(KFold):
             # map recording ids to window ids
             train_window_i = rec[rec.isin(train_i)].index.to_list()
             valid_window_i = rec[rec.isin(valid_i)].index.to_list()
+            if set(train_window_i) & set(valid_window_i):
+                raise RuntimeError('train and valid set overlap')
             yield train_window_i, valid_window_i
 
 
@@ -314,6 +316,12 @@ def create_estimator(
         An estimator holding a braindecode model and implementing fit /
         transform.
     """
+    # there won't be any scoring output regarding the validation set during the
+    # training if used with scikit-learn functions as cross_validate as for
+    # this benchmark. scikit-learn creates ids for train and validation set and
+    # afterwards calls estimator.fit(train_X, train_y) without setting a
+    # validation set. afterwards estimator.predict(valid_X) is executed and
+    # scores are computed
     callbacks = [
         # can be dropped if there is no interest in progress of _window_ r2
         # during training
@@ -376,7 +384,7 @@ def X_y_model(
     -------
     X: skorch.helper.SliceDataset
         A dataset that gives X.
-    y: skorch.helper.SliceDataset
+    y: skorch.helper.SliceDataset | CustomSliceDataset
         A modified SliceDataset that gives ages reshaped to (-1, 1).
     estimator: braindecode.EEGRegressor
         A braindecode estimator implementing fit/transform.

@@ -253,9 +253,6 @@ def run_benchmark_cv(benchmark, dataset):
         # uncountable logging outputs that do cover the training logging output
         # as well as might slow down code execution
         mne.set_log_level('ERROR')
-        # do not run cv in parallel. we assume to only have 1 GPU
-        # instead use n_jobs to (lazily) load data in parallel such that the GPU
-        # does not have to wait
         from X_y_model import (
             # overwrite splitting on epoch level by splitting on recording level
             BraindecodeKFold,

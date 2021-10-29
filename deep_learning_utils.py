@@ -358,6 +358,14 @@ def create_estimator(
         ("lr_scheduler", LRScheduler('CosineAnnealingLR', T_max=n_epochs - 1)),
     ]
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    if device == 'cuda':
+        # Too many workers can create an IO bottleneck - n_gpus * 5 is a good
+        # rule of thumb
+        max_num_workers = torch.cuda.device_count() * 5
+        num_workers = min(max_num_workers, n_jobs if n_jobs > 1 else 0)
+    else:
+        num_workers = n_jobs if n_jobs > 1 else 0
+
     estimator = EEGRegressor(
         model,
         criterion=torch.nn.L1Loss,  # optimize MAE
@@ -369,13 +377,13 @@ def create_estimator(
         batch_size=batch_size,
         callbacks=callbacks,
         device=device,
-        iterator_train__num_workers=n_jobs if n_jobs > 1 else 0,
-        iterator_valid__num_workers=n_jobs if n_jobs > 1 else 0,
+        iterator_train__num_workers=num_workers,
+        iterator_valid__num_workers=num_workers,
     )
     return estimator
 
 
-def X_y_model(
+def create_dataset_target_model(
         fnames,
         ages,
         model_name,
@@ -420,13 +428,13 @@ def X_y_model(
     ds = create_dataset(
         fnames=fnames,
         ages=ages,
-        preload=True,  # To avoid OSError: Too many files opened.
+        preload=True,  # Set to True to avoid OSError: Too many files opened.
         n_jobs=n_jobs,
         debug=debug
     )
     # load a single window to get number of eeg channels and time points for
     # model creation
-    x, y, ind = ds[0]
+    x, y, _ = ds[0]
     n_channels, window_size = x.shape
     model, lr, weight_decay = create_model(
         model_name=model_name,

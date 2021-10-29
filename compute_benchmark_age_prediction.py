@@ -1,25 +1,25 @@
 # %% imports
 import argparse
 import importlib
-from logging import warn
-from timeit import default_timer as timer
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+from logging import warning
 
 import mne
+import numpy as np
+import pandas as pd
 from sklearn.linear_model import RidgeCV
-from sklearn.preprocessing import StandardScaler
 from sklearn.dummy import DummyRegressor
-from sklearn.preprocessing import FunctionTransformer
 from sklearn.pipeline import make_pipeline
-from sklearn.model_selection import (KFold, GridSearchCV, cross_validate,
-                                     train_test_split)
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import StandardScaler, FunctionTransformer
+from sklearn.model_selection import KFold, GridSearchCV, cross_validate
 from sklearn.metrics import make_scorer, r2_score, mean_absolute_error
-
 import coffeine
+
+from deep_learning_utils import (
+    create_dataset_target_model, get_fif_paths, BraindecodeKFold,
+    make_braindecode_scorer)
+
+
 DATASETS = ['chbp', 'lemon', 'tuab', 'camcan']
 BENCHMARKS = ['dummy', 'filterbank-riemann', 'filterbank-source', 'handcrafted',
               'shallow', 'deep']
@@ -213,14 +213,13 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         model = DummyRegressor(strategy="mean")
 
     elif benchmark in ['shallow', 'deep']:
-        from X_y_model import X_y_model, get_fif_paths
         fif_fnames = get_fif_paths(dataset, cfg)
         ages = df_subjects.age.values
         model_name = benchmark
         n_epochs = 35
         batch_size = 256  # 64
         seed = 20211022
-        X, y, model = X_y_model(
+        X, y, model = create_dataset_target_model(
             fnames=fif_fnames,
             ages=ages,
             model_name=model_name,
@@ -234,7 +233,6 @@ def load_benchmark_data(dataset, benchmark, condition=None):
 
 # %% Run CV
 
-
 def run_benchmark_cv(benchmark, dataset):
     X, y, model, fit_params = load_benchmark_data(
         dataset=dataset, benchmark=benchmark)
@@ -246,8 +244,7 @@ def run_benchmark_cv(benchmark, dataset):
 
     metrics = [mean_absolute_error, r2_score]
     results = list()
-    cv_params = dict(n_splits=2, shuffle=True, random_state=42)
-    # cv_params = dict(n_splits=10, shuffle=True, random_state=42)
+    cv_params = dict(n_splits=10, shuffle=True, random_state=42)
 
     if benchmark in ['shallow', 'deep']:
         # turn off most of the mne logging. due to lazy loading we have
@@ -258,15 +255,10 @@ def run_benchmark_cv(benchmark, dataset):
         # instead use n_jobs to (lazily) load data in parallel such that the GPU
         # does not have to wait
         if N_JOBS > 1:
-            warn('joblib can only be used to load the data, as deep learning '
-                 'models do not currently support multi-GPU training during '
-                 'cross-validation.')
-        from X_y_model import (
-            # overwrite splitting on epoch level by splitting on recording level
-            BraindecodeKFold,
-            # overwrite scoring on epoch level by scoring on recording level
-            make_braindecode_scorer,
-        )
+            warning('When running deep learning benchmarks joblib can only be '
+                    'used to load the data, as cross-validation with n_jobs '
+                    'would require one GPU per split.')
+
         cv = BraindecodeKFold(**cv_params)
         scoring = {m.__name__: make_braindecode_scorer(m) for m in metrics}
     else:

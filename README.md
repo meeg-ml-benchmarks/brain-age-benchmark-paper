@@ -28,6 +28,8 @@ To run the code please consider the following instructions.
 
 4. MNE-bids-pipeline: https://mne.tools/mne-bids-pipeline/getting_started/install.html
 
+5. [Braindecode](https://github.com/braindecode/braindecode) and [pytorch](http://pytorch.org/) for deep learning benchmarks
+
 *Note:* the bids pipeline is a bit different from other packages. Instead of installing it as a library it is more like a collection of scripts. Installing it means cloning the GitHub repository and making sure the dependencies are met (link above).
 
 ### Running the code
@@ -35,7 +37,7 @@ To run the code please consider the following instructions.
 Assuming that `mne-bids-pipeline` is downloaded in the parent directory of this repository you can kick-off the preprocessing like:
 
 ```bash
-python ../mne-bids-pipeline/run.py config_chbp_eeg.py --steps=preprocessing
+python ../mne-bids-pipeline/run.py --config config_chbp_eeg.py --steps=preprocessing
 ```
 
 Then run `compute_autoreject.py`, `compute_features.py` and `compute_brain_age.py`.

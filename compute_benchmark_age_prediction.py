@@ -139,7 +139,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
     df_subjects = df_subjects.set_index('participant_id')
     # now we read in the processing log to see for which participants we have EEG
 
-    X, y, model, fit_params = None, None, None, None
+    X, y, model = None, None, None
     if benchmark not in ['dummy', 'shallow', 'deep']:
         bench_cfg = bench_config[benchmark]
         feature_label = bench_cfg['feature_map']
@@ -149,7 +149,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         df_subjects = df_subjects.loc[good_subjects]
         print(f"Found data from {len(good_subjects)} subjects")
         if len(good_subjects) == 0:
-            return X, y, model, fit_params
+            return X, y, model
 
     if benchmark == 'filterbank-riemann':
         frequency_bands = bench_cfg['frequency_bands']
@@ -229,13 +229,12 @@ def load_benchmark_data(dataset, benchmark, condition=None):
             seed=seed,
             debug=False
         )
-    return X, y, model, fit_params
+    return X, y, model
 
 # %% Run CV
 
 def run_benchmark_cv(benchmark, dataset):
-    X, y, model, fit_params = load_benchmark_data(
-        dataset=dataset, benchmark=benchmark)
+    X, y, model = load_benchmark_data(dataset=dataset, benchmark=benchmark)
     if X is None:
         print(
             "no data found for benchmark "
@@ -269,9 +268,9 @@ def run_benchmark_cv(benchmark, dataset):
     scores = cross_validate(
         model, X, y, cv=cv, scoring=scoring,
         n_jobs=(1 if benchmark in ['filterbank-source', 'shallow', 'deep']
-                else N_JOBS),  # XXX too big for joblib
-        fit_params=fit_params)
+                else N_JOBS))  # XXX too big for joblib
     print("... done.")
+
     results = pd.DataFrame(
         {'MAE': scores['test_mean_absolute_error'],
          'r2': scores['test_r2_score'],

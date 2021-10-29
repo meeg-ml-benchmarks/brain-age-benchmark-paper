@@ -1,6 +1,6 @@
 library(ggplot2)
 library(scales)
-library(ggthemes)   
+library(ggthemes)
 library(patchwork)
 source('utils.r')
 
@@ -33,7 +33,8 @@ colors <- setNames(
   c('black', 'orange', 'skye_blue', 'bluish_green', 'yellow', 'blue',
     'vermillon', 'purple'))
 
-color_values <- as.vector(colors[c('bluish_green', 'orange', 'skye_blue', 'black')])
+color_values <- as.vector(colors[c('bluish_green', 'orange', 'skye_blue',
+                                   'black', 'vermillon', 'purple')])
 
 set.seed(42)
 (fig_r2 <- ggplot(
@@ -70,7 +71,7 @@ set.seed(42)
   theme(plot.title = element_text(face = 'bold'))
 
 
-p <- fig_mae | fig_r2    
+p <- fig_mae | fig_r2
 p + plot_annotation(
   title = 'Age Prediction From M/EEG [10-fold cross validation]',
   theme = theme(plot.title = element_text(size = 26))
@@ -113,7 +114,7 @@ set.seed(42)
        title = 'B')) +
   theme(plot.title = element_text(face = 'bold'))
 
-p2 <- fig_fit | fig_score    
+p2 <- fig_fit | fig_score
 p2 + plot_annotation(
   title = 'Run time [10-fold cross validation]',
   theme = theme(plot.title = element_text(size = 26))

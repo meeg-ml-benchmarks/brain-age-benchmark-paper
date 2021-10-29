@@ -1,24 +1,25 @@
 # %% imports
 import argparse
 import importlib
-from timeit import default_timer as timer
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+from logging import warning
 
 import mne
-from sklearn.linear_model import RidgeCV    
-from sklearn.preprocessing import StandardScaler
+import numpy as np
+import pandas as pd
+from sklearn.linear_model import RidgeCV
 from sklearn.dummy import DummyRegressor
-from sklearn.preprocessing import FunctionTransformer
 from sklearn.pipeline import make_pipeline
-from sklearn.model_selection import (KFold, GridSearchCV, cross_validate,
-                                     train_test_split)
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import StandardScaler, FunctionTransformer
+from sklearn.model_selection import KFold, GridSearchCV, cross_validate
 from sklearn.metrics import make_scorer, r2_score, mean_absolute_error
-
 import coffeine
+
+from deep_learning_utils import (
+    create_dataset_target_model, get_fif_paths, BraindecodeKFold,
+    make_braindecode_scorer)
+
+
 DATASETS = ['chbp', 'lemon', 'tuab', 'camcan']
 BENCHMARKS = ['dummy', 'filterbank-riemann', 'filterbank-source', 'handcrafted',
               'shallow', 'deep']
@@ -93,7 +94,7 @@ def aggregate_features(X, func='mean', axis=0):
 
 def load_benchmark_data(dataset, benchmark, condition=None):
     """Load the input features and outcome vectors for a given benchmark
-    
+
     Parameters
     ----------
     dataset: 'camcan' | 'chbp' | 'lemon' | 'tuh'
@@ -103,7 +104,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         Instead information for accsing the epoched data is provided.
     condition: 'eyes-closed' | 'eyes-open' | 'pooled' | 'rest'
         Specify from which sub conditions data should be loaded.
-    
+
     Returns
     -------
     X: numpy.ndarray or pandas.DataFrame of shape (n_subjects, n_predictors)
@@ -114,7 +115,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
     model: object
         The model to matching the benchmark-specific features.
         For `filter_bank` and `hand_crafted`, a scikit-learn estimator pipeline
-        is returned.  
+        is returned.
     """
     if dataset not in config_map:
         raise ValueError(
@@ -138,7 +139,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
     df_subjects = df_subjects.set_index('participant_id')
     # now we read in the processing log to see for which participants we have EEG
 
-    X, y, model, fit_params = None, None, None, None
+    X, y, model = None, None, None
     if benchmark not in ['dummy', 'shallow', 'deep']:
         bench_cfg = bench_config[benchmark]
         feature_label = bench_cfg['feature_map']
@@ -148,7 +149,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         df_subjects = df_subjects.loc[good_subjects]
         print(f"Found data from {len(good_subjects)} subjects")
         if len(good_subjects) == 0:
-            return X, y, model, fit_params
+            return X, y, model
 
     if benchmark == 'filterbank-riemann':
         frequency_bands = bench_cfg['frequency_bands']
@@ -212,40 +213,38 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         model = DummyRegressor(strategy="mean")
 
     elif benchmark in ['shallow', 'deep']:
-        from X_y_model import X_y_model, get_fif_paths
         fif_fnames = get_fif_paths(dataset, cfg)
         ages = df_subjects.age.values
         model_name = benchmark
         n_epochs = 35
-        batch_size = 64
+        batch_size = 256  # 64
         seed = 20211022
-        X, y, model = X_y_model(
+        X, y, model = create_dataset_target_model(
             fnames=fif_fnames,
             ages=ages,
             model_name=model_name,
             n_epochs=n_epochs,
             batch_size=batch_size,
-            n_jobs=N_JOBS,
+            n_jobs=N_JOBS,  # use n_jobs for parallel lazy data loading
             seed=seed,
+            debug=False
         )
-        fit_params = {'epochs': n_epochs}
-    return X, y, model, fit_params
+    return X, y, model
 
 # %% Run CV
 
-
 def run_benchmark_cv(benchmark, dataset):
-    X, y, model, fit_params = load_benchmark_data(
-        dataset=dataset, benchmark=benchmark)
+    X, y, model = load_benchmark_data(dataset=dataset, benchmark=benchmark)
     if X is None:
         print(
             "no data found for benchmark "
             f"'{benchmark}' on dataset '{dataset}'")
         return
-    
+
     metrics = [mean_absolute_error, r2_score]
     results = list()
     cv_params = dict(n_splits=10, shuffle=True, random_state=42)
+
     if benchmark in ['shallow', 'deep']:
         # turn off most of the mne logging. due to lazy loading we have
         # uncountable logging outputs that do cover the training logging output
@@ -255,25 +254,23 @@ def run_benchmark_cv(benchmark, dataset):
         # instead use n_jobs to (lazily) load data in parallel such that the GPU
         # does not have to wait
         if N_JOBS > 1:
-            raise ValueError(
-                "Please do not use joblib for the deep benchmarks.")
-        from X_y_model import (
-            # overwrite splitting on epoch level by splitting on recording level
-            BraindecodeKFold,
-            # overwrite scoring on epoch level by scoring on recording level
-            make_braindecode_scorer,
-        )
+            warning('When running deep learning benchmarks joblib can only be '
+                    'used to load the data, as cross-validation with n_jobs '
+                    'would require one GPU per split.')
+
         cv = BraindecodeKFold(**cv_params)
-        scoring = {m.__name__: make_braindecode_scorer(m)
-                   for m in metrics}
-    cv = KFold(**cv_params)
-    scoring = {m.__name__: make_scorer(m) for m in metrics}
+        scoring = {m.__name__: make_braindecode_scorer(m) for m in metrics}
+    else:
+        cv = KFold(**cv_params)
+        scoring = {m.__name__: make_scorer(m) for m in metrics}
+
     print("Running cross validation ...")
-    scores = cross_validate(model, X, y, cv=cv, scoring=scoring,
-                            n_jobs=(1 if benchmark == 'filterbank-source'
-                                    else N_JOBS),  # XXX too big for joblib
-                            fit_params=fit_params)
+    scores = cross_validate(
+        model, X, y, cv=cv, scoring=scoring,
+        n_jobs=(1 if benchmark in ['filterbank-source', 'shallow', 'deep']
+                else N_JOBS))  # XXX too big for joblib
     print("... done.")
+
     results = pd.DataFrame(
         {'MAE': scores['test_mean_absolute_error'],
          'r2': scores['test_r2_score'],
@@ -281,7 +278,7 @@ def run_benchmark_cv(benchmark, dataset):
          'score_time': scores['score_time'],
          'dataset': dataset,
          'benchmark': benchmark}
-    ) 
+    )
     for metric in ('MAE', 'r2'):
         print(f'{metric}({benchmark}, {dataset}) = {results[metric].mean()}')
     return results

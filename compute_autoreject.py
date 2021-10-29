@@ -59,6 +59,10 @@ def run_subject(subject, cfg):
         epochs.rename_channels(
             {ch: ch.rstrip('-REF') for ch in epochs.ch_names})
 
+    # XXX Seems to be necessary for TUAB - figure out why
+    montage = mne.channels.make_standard_montage('standard_1005')
+    epochs.set_montage(montage)
+
     if analyze_channels:
         epochs.pick_channels(analyze_channels)
 

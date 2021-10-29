@@ -123,7 +123,8 @@ def _convert_tuh_recording_to_bids(ds, bids_save_dir, desc=None):
         subject=mrn, session=session_nb, task=task, run=desc['segment'],
         root=bids_save_dir, datatype='eeg', check=True)
 
-    write_raw_bids(raw, bids_path, overwrite=True)
+    write_raw_bids(raw, bids_path, overwrite=True, allow_preload=True,
+                   format='BrainVision')
 
 
 def convert_tuab_to_bids(tuh_data_dir, bids_save_dir, healthy_only=True,

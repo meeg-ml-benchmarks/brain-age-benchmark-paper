@@ -1,11 +1,13 @@
 import mne
 import torch
+from torch import nn
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import KFold
 from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.compose import TransformedTargetRegressor
+from joblib.parallel import Parallel, delayed
 
 from mne_bids import BIDSPath
 
@@ -120,6 +122,7 @@ def create_windows_ds_from_mne_epochs(
         age,
         target_name=None,
         transform=None,
+        preload=False
 ):
     """Create a braindecode WindowsDataset from mne.Epochs.
 
@@ -135,13 +138,15 @@ def create_windows_ds_from_mne_epochs(
         The name of the target. If not None, has to be an entry in description.
     transform: callable
         A transform to be applied to the data on __getitem__.
+    preload : bool
+        If True, preload the epochs.
 
     Returns
     -------
     braindecode.datasets.WindowsDataset
         A braindecode WindowsDataset.
     """
-    epochs = mne.read_epochs(fname=fname, preload=False)
+    epochs = mne.read_epochs(fname=fname, preload=preload)
     description = {'fname': fname, 'rec': rec_i, 'age': age}
     target = -1
     if description is not None and target_name is not None:
@@ -185,7 +190,11 @@ class DataScaler(object):
         return x * self.scaling_factor
 
 
-def create_dataset(fnames, ages):
+def target_to_2d(y):
+    return np.array(y).reshape(-1, 1)
+
+
+def create_dataset(fnames, ages, preload=False, n_jobs=1, debug=False):
     """Read all epochs .fif files from given fnames. Convert to braindecode
     dataset and add ages as targets.
 
@@ -195,26 +204,45 @@ def create_dataset(fnames, ages):
         A list of .fif files.
     ages: array-like
         Subject ages.
+    preload : bool
+        If True, preload the epochs.
+    debug : bool
+        If True, return only a few sessions.
 
     Returns
     -------
     braindecode.datasets.BaseConcatDataset
         A braindecode dataset.
     """
-    datasets = []
-    # TODO: the idea was to parallelize reading of fif files with joblib
-    #  parallel, however, mne.read_epochs does not work with that
-    # sequential reading might be slow
-    for rec_i, (fname, age) in enumerate(zip(fnames, ages)):
-        ds = create_windows_ds_from_mne_epochs(
-            fname=fname, rec_i=rec_i, age=age, target_name='age',
-            # add a transform that converts data from volts to microvolts
-            # on-the-fly
-            transform=DataScaler(scaling_factor=1e6),
-        )
-        datasets.append(ds)
-    ds = BaseConcatDataset(datasets)
-    return ds
+    if debug:
+        fnames, ages = fnames[:10], ages[:10]
+
+    # TODO: The idea was to parallelize reading of fif files with joblib
+    #       parallel, however, mne.read_epochs does not work with that when
+    #       preload=False.
+    if preload:
+        datasets = Parallel(n_jobs=n_jobs)(
+            delayed(create_windows_ds_from_mne_epochs)(
+                fname=fname, rec_i=rec_i, age=age, target_name='age',
+                # add a transform that converts data from volts to microvolts
+                transform=DataScaler(scaling_factor=1e6), preload=True)
+                for rec_i, (fname, age) in enumerate(zip(fnames, ages)))
+    else:
+        datasets = []
+        for rec_i, (fname, age) in enumerate(zip(fnames, ages)):
+            ds = create_windows_ds_from_mne_epochs(
+                fname=fname, rec_i=rec_i, age=age, target_name='age',
+                # add a transform that converts data from volts to microvolts
+                transform=DataScaler(scaling_factor=1e6), preload=False
+            )
+            datasets.append(ds)
+    # apply a target transform that converts: age -> [[age]]
+    # why does the transform not work?
+    # currently the TransformedTargetRegressor with StandardScaler will do the
+    # job. If it is removed, computations will fail due to target in incorrect
+    # shape. Adding the target_transform here did not solve the problem.
+    # Instead a CustomSliceDataset is needed that does the reshaping
+    return BaseConcatDataset(datasets)  #, target_transform=target_to_2d)
 
 
 def create_model(model_name, window_size, n_channels, seed):
@@ -278,6 +306,11 @@ def create_model(model_name, window_size, n_channels, seed):
     # Send model to GPU
     if cuda:
         model.cuda()
+        n_devices = torch.cuda.device_count()
+        if n_devices > 1:
+            print(f'Using {n_devices} GPUs.')
+            model = nn.DataParallel(model)
+
     return model, lr, weight_decay
 
 
@@ -315,15 +348,14 @@ def create_estimator(
     # validation set. afterwards estimator.predict(valid_X) is executed and
     # scores are computed
     callbacks = [
-        # can be dropped if there is no interest in progress of _window_ r2
-        # during training
-        ("R2", BatchScoring('r2', lower_is_better=False)),
-        # can be dropped if there is no interest in progress of _window_ mae
-        # during training
-        ("MAE", BatchScoring("neg_mean_absolute_error",
-                             lower_is_better=False)),
-        ("lr_scheduler", LRScheduler('CosineAnnealingLR',
-                                     T_max=n_epochs-1)),
+        # # can be dropped if there is no interest in progress of _window_ r2
+        # # during training
+        # ("R2", BatchScoring('r2', lower_is_better=False)),
+        # # can be dropped if there is no interest in progress of _window_ mae
+        # # during training
+        # ("MAE", BatchScoring("neg_mean_absolute_error",
+        #                      lower_is_better=False)),
+        ("lr_scheduler", LRScheduler('CosineAnnealingLR', T_max=n_epochs - 1)),
     ]
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     estimator = EEGRegressor(
@@ -332,6 +364,7 @@ def create_estimator(
         optimizer=torch.optim.AdamW,
         optimizer__lr=lr,
         optimizer__weight_decay=weight_decay,
+        max_epochs=n_epochs,
         train_split=None,  # we do splitting via KFold object in cross_validate
         batch_size=batch_size,
         callbacks=callbacks,
@@ -350,9 +383,10 @@ def X_y_model(
         batch_size,
         n_jobs,
         seed,
+        debug=False
 ):
-    """Create am estimator (TransformedTargetRegressor) that implements
-    fit/transform and datasets that return X and y.
+    """Create an estimator (EEGRegressor) that implements fit/transform and a
+    braindecode dataset that returns X and y.
 
     Parameters
     ----------
@@ -371,6 +405,8 @@ def X_y_model(
         The number of workers to load data in parallel.
     seed: int
         The seed to be used to initialize the network.
+    debug : bool
+        If True, return smaller dataset and estimator for quick debugging.
 
     Returns
     -------
@@ -384,6 +420,9 @@ def X_y_model(
     ds = create_dataset(
         fnames=fnames,
         ages=ages,
+        preload=True,  # To avoid OSError: Too many files opened.
+        n_jobs=n_jobs,
+        debug=debug
     )
     # load a single window to get number of eeg channels and time points for
     # model creation
@@ -397,7 +436,7 @@ def X_y_model(
     )
     estimator = create_estimator(
         model=model,
-        n_epochs=n_epochs,
+        n_epochs=2 if debug else n_epochs,
         batch_size=batch_size,
         lr=lr,
         weight_decay=weight_decay,

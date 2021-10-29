@@ -5,10 +5,9 @@ import mne
 study_name = "age-prediction-benchmark"
 
 # On drago
-N_JOBS = 30
-bids_root = Path("/storage/store2/data/TUAB-healthy-bids2")
+N_JOBS = 80
+bids_root = Path("/storage/store2/data/TUAB-healthy-bids-bv")
 deriv_root = Path("/storage/store3/derivatives/TUAB-healthy-bids3")
-# deriv_root = Path("/storage/store3/derivatives/TUAB-healthy-bids2")
 subjects_dir = Path('/storage/store/data/camcan-mne/freesurfer')
 
 source_info_path_update = {'processing': 'autoreject',
@@ -41,7 +40,7 @@ ch_types = ["eeg"]
 
 l_freq = 0.1
 h_freq = 49
-resample_sfreq = 250
+resample_sfreq = 200
 
 find_breaks = False
 

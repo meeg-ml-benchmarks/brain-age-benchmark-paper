@@ -260,6 +260,8 @@ def run_benchmark_cv(benchmark, dataset):
 
         cv = BraindecodeKFold(**cv_params)
         scoring = {m.__name__: make_braindecode_scorer(m) for m in metrics}
+        scoring['history'] = HistoryTracker()
+        # TODO: plot / save the learning curves
     else:
         cv = KFold(**cv_params)
         scoring = {m.__name__: make_scorer(m) for m in metrics}

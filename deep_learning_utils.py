@@ -365,13 +365,9 @@ def create_estimator(
     # validation set. afterwards estimator.predict(valid_X) is executed and
     # scores are computed
     callbacks = [
-        # can be dropped if there is no interest in progress of _window_ r2
-        # during training
         ("R2", BatchScoring('r2', lower_is_better=False, on_train=True)),
-        # can be dropped if there is no interest in progress of _window_ mae
-        # during training
-        ("MAE", BatchScoring("neg_mean_absolute_error",
-                             lower_is_better=False, on_train=True)),
+        ("MAE", BatchScoring(
+            "neg_mean_absolute_error", lower_is_better=False, on_train=True)),
         ("lr_scheduler", LRScheduler('CosineAnnealingLR', T_max=n_epochs - 1)),
     ]
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -528,3 +524,14 @@ def get_fif_paths(dataset, cfg):
         bp = BIDSPath(**bp_args)
         fpaths.append(bp.fpath)
     return fpaths
+
+
+class HistoryTracker(object):
+    """A fake scorer that takes and saves model histories."""
+    def __init__(self):
+        self.fold_histories = []
+
+    def __call__(self, estimator, X, y):
+        self.fold_histories.append(estimator.regressor_.history_)
+        # scikit-learns requires a number return type
+        return np.nan

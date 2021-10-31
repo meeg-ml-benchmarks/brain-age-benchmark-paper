@@ -17,7 +17,7 @@ import coffeine
 
 from deep_learning_utils import (
     create_dataset_target_model, get_fif_paths, BraindecodeKFold,
-    make_braindecode_scorer)
+    make_braindecode_scorer, HistoryTracker)
 
 
 DATASETS = ['chbp', 'lemon', 'tuab', 'camcan']
@@ -246,7 +246,8 @@ def run_benchmark_cv(benchmark, dataset):
 
     metrics = [mean_absolute_error, r2_score]
     results = list()
-    cv_params = dict(n_splits=10, shuffle=True, random_state=42)
+    # cv_params = dict(n_splits=10, shuffle=True, random_state=42)
+    cv_params = dict(n_splits=2, shuffle=True, random_state=42)
 
     if benchmark in ['shallow', 'deep']:
         # turn off most of the mne logging. due to lazy loading we have
@@ -264,7 +265,6 @@ def run_benchmark_cv(benchmark, dataset):
         cv = BraindecodeKFold(**cv_params)
         scoring = {m.__name__: make_braindecode_scorer(m) for m in metrics}
         scoring['history'] = HistoryTracker()
-        # TODO: plot / save the learning curves
     else:
         cv = KFold(**cv_params)
         scoring = {m.__name__: make_scorer(m) for m in metrics}
@@ -286,13 +286,22 @@ def run_benchmark_cv(benchmark, dataset):
     )
     for metric in ('MAE', 'r2'):
         print(f'{metric}({benchmark}, {dataset}) = {results[metric].mean()}')
-    return results
+
+    if benchmark in ['shallow', 'deep']:
+        history = scoring['history'].to_frame()  # Learning curves
+    else:
+        history = None
+
+    return results, history
 
 
 #%% run benchmarks
 for dataset, benchmark in tasks:
     print(f"Now running '{benchmark}' on '{dataset}' data")
-    results_df = run_benchmark_cv(benchmark, dataset)
+    results_df, history_df = run_benchmark_cv(benchmark, dataset)
     if results_df is not None:
         results_df.to_csv(
             f"./results/benchmark-{benchmark}_dataset-{dataset}.csv")
+    if history_df is not None:
+        history_df.to_csv(
+            f"./history/benchmark-{benchmark}_dataset-{dataset}.csv")

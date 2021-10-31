@@ -9,16 +9,14 @@ import torch
 from torch import nn
 import numpy as np
 import pandas as pd
+from mne_bids import BIDSPath
 from sklearn.preprocessing import StandardScaler
 from sklearn.compose import TransformedTargetRegressor
 from sklearn.model_selection import KFold, train_test_split
 from joblib.parallel import Parallel, delayed
 
-from mne_bids import BIDSPath
-
-from skorch.dataset import CVSplit
 from skorch.helper import SliceDataset
-from skorch.callbacks import LRScheduler
+from skorch.callbacks import LRScheduler, BatchScoring
 
 from braindecode.datasets import WindowsDataset, BaseConcatDataset
 from braindecode.models import ShallowFBCSPNet, Deep4Net
@@ -342,7 +340,6 @@ def create_model(model_name, window_size, n_channels, cropped, seed):
             window_size = None
             final_conv_length = 35
         model = ShallowFBCSPNet(
-        # model = DummyModule(
             in_chans=n_channels,
             n_classes=1,
             input_window_samples=window_size,
@@ -427,9 +424,9 @@ def create_estimator(model, n_epochs, batch_size, lr, weight_decay,
     # validation set. afterwards estimator.predict(valid_X) is executed and
     # scores are computed
     callbacks = [
-        ("R2", BatchScoring('r2', lower_is_better=False, on_train=True)),
-        ("MAE", BatchScoring(
-            "neg_mean_absolute_error", lower_is_better=False, on_train=True)),
+        # ("R2", BatchScoring('r2', lower_is_better=False, on_train=True)),
+        # ("MAE", BatchScoring(
+        #     "neg_mean_absolute_error", lower_is_better=False, on_train=True)),
         ("lr_scheduler", LRScheduler('CosineAnnealingLR', T_max=n_epochs - 1)),
     ]
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -468,6 +465,8 @@ def create_dataset_target_model(
         n_jobs,
         cropped,
         seed,
+        lr=None,
+        weight_decay=None,
         debug=False
 ):
     """Create an estimator (EEGRegressor) that implements fit/transform and a
@@ -492,6 +491,10 @@ def create_dataset_target_model(
         A flag to switch between cropped and trialwise decoding.
     seed: int
         The seed to be used to initialize the network.
+    lr : float | None
+        Learning rate.
+    weight_decay : float | None
+        Weight decay.
     debug : bool
         If True, return smaller dataset and estimator for quick debugging.
 
@@ -517,19 +520,22 @@ def create_dataset_target_model(
     # model creation
     x, y, _ = ds[0]
     n_channels, window_size = x.shape
-    model, lr, weight_decay = create_model(
+    model, model_lr, model_weight_decay = create_model(
         model_name=model_name,
         window_size=window_size,
         n_channels=n_channels,
         cropped=cropped,
+        lr=lr,
+        weight_decay=weight_decay,
         seed=seed,
     )
     estimator = create_estimator(
         model=model,
         n_epochs=2 if debug else n_epochs,
         batch_size=batch_size,
-        lr=lr,
-        weight_decay=weight_decay,
+        lr=model_lr if lr is None else lr,
+        weight_decay=model_weight_decay \
+            if weight_decay is None else weight_decay,
         use_valid_set=True,
         n_jobs=n_jobs,
         random_state=seed
@@ -602,3 +608,12 @@ class HistoryTracker(object):
         self.fold_histories.append(estimator.regressor_.history_)
         # scikit-learns requires a number return type
         return np.nan
+
+    def to_frame(self):
+        df = list()
+        for i, fold in enumerate(self.fold_histories):
+            for epoch in fold:
+                sub_df = pd.DataFrame(epoch)
+                sub_df['fold'] = i + 1
+                df.append(sub_df)
+        return pd.concat(df, ignore_index=True)

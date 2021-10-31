@@ -80,6 +80,7 @@ def objective(trial, dataset, benchmark):
     ages = df_subjects.age.values
     model_name = benchmark
     n_epochs = 35
+    # XXX Add patience hyperparameter
     seed = 20211022
 
     lr = trial.suggest_loguniform('lr', 1e-5, 1e-1)

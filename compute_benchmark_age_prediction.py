@@ -229,8 +229,9 @@ def load_benchmark_data(dataset, benchmark, condition=None):
             n_jobs=N_JOBS,  # use n_jobs for parallel lazy data loading
             cropped=cropped,
             seed=seed,
-            debug=False
+            debug=True
         )
+
     return X, y, model
 
 # %% Run CV

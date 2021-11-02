@@ -21,3 +21,24 @@ fig <- ggplot(
   labs(x="Age [years]", y="Density")
 
 my_ggsave('./figures/fig_demographics', fig, dpi = 300, width = 10, height = 4)
+
+demog_summary <- do.call(rbind, lapply(
+  split(demog_data, list(demog_data$sex, demog_data$dataset)),
+  function(dat){
+    with(dat, 
+      data.frame(dataset = dat$dataset[[1]],
+                 sub_count = length(sex),
+                 sex = sex[[1]],
+                 age = mean(age))
+    )
+}))
+
+demog_out <- merge(
+  demog_summary,
+  aggregate(sub_count ~ dataset, data = demog_summary, FUN = sum),
+  by = 'dataset'
+)
+
+names(demog_out) <- c('dataset', 'sub_count', 'sex', 'age', 'count')
+
+write.csv(demog_out, './outputs/demog_summary_table.csv')

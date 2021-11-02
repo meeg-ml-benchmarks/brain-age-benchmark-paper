@@ -22,23 +22,35 @@ fig <- ggplot(
 
 my_ggsave('./figures/fig_demographics', fig, dpi = 300, width = 10, height = 4)
 
-demog_summary <- do.call(rbind, lapply(
+demog_summary1 <- do.call(rbind, lapply(
   split(demog_data, list(demog_data$sex, demog_data$dataset)),
   function(dat){
     with(dat, 
       data.frame(dataset = dat$dataset[[1]],
-                 sub_count = length(sex),
                  sex = sex[[1]],
-                 age = mean(age))
+                 sub_count = length(sex),
+                 sub_M = mean(age),
+                 sub_min = min(age),
+                 sub_max = max(age))
     )
 }))
 
-demog_out <- merge(
-  demog_summary,
-  aggregate(sub_count ~ dataset, data = demog_summary, FUN = sum),
-  by = 'dataset'
-)
+demog_summary2 <- do.call(rbind, lapply(
+  split(demog_data, demog_data$dataset),
+  function(dat){
+    with(dat, 
+      data.frame(dataset = dat$dataset[[1]],
+                 count = nrow(dat),
+                 min = min(age),
+                 max = max(age),
+                 SD = sd(age),
+                 M = mean(age))
+    )
+}))
 
-names(demog_out) <- c('dataset', 'sub_count', 'sex', 'age', 'count')
+demog_out <- merge(demog_summary2, demog_summary1, by = 'dataset')
+
+is_num <- sapply(demog_out, is.numeric)
+demog_out[, is_num] <- round(demog_out[, is_num], 1)  
 
 write.csv(demog_out, './outputs/demog_summary_table.csv')

@@ -11,6 +11,10 @@ results_fnames <- list.files('results/', full.names = T)
 results <- do.call(rbind, lapply(results_fnames, read.csv))
 results$X <- NULL
 
+results$dataset <- factor(
+  results$dataset, levels = c('camcan', 'lemon', 'chbp', 'tuab'),
+  labels = c('Cam-CAN', 'LEMON', 'CHBP', 'TUAB'))
+
 colors <- setNames(
   colorblind_pal()(8),
   c('black', 'orange', 'skye_blue', 'bluish_green', 'yellow', 'blue',
@@ -30,15 +34,15 @@ set.seed(42)
   aes(x = r2, y = benchmark, color = benchmark,
       fill = benchmark),
       data = results) +
-  facet_wrap(dataset~., nrow = 4, strip.position="right") +
+  facet_wrap(dataset~., nrow = 4, strip.position = "right") +
   geom_jitter(show.legend = F, size = 1.2, alpha = 0.7) +
-  geom_boxplot(alpha=0.1, show.legend = F, size = 1.1, width = 0.8) +
+  geom_boxplot(alpha = 0.1, show.legend = F, size = 1.1, width = 0.8) +
   theme_minimal(base_size = 16) +
-  coord_cartesian(xlim=c(-0.3, 0.8)) +
+  coord_cartesian(xlim = c(-0.3, 0.8)) +
   scale_x_continuous(breaks = seq(-0.5, 0.8, 0.1)) +
   scale_color_manual(values = color_values) +
   scale_fill_manual(values = color_values) +
-  geom_vline(xintercept=0, color = 'black', linetype='dashed') +
+  geom_vline(xintercept = 0, color = 'black', linetype='dashed') +
   labs(y = element_blank(), x = bquote(R^2~"[10-fold cross validation]"),
        title = 'Age Prediction From M/EEG Signals'))
 
@@ -50,9 +54,9 @@ set.seed(42)
   aes(x = MAE, y = benchmark, color = benchmark,
       fill = benchmark),
       data = results) +
-  facet_wrap(dataset~., nrow = 4, strip.position="right") +
+  facet_wrap(dataset~., nrow = 4, strip.position = "right") +
   geom_jitter(show.legend = F, size = 1.2, alpha = 0.7) +
-  geom_boxplot(alpha=0.1, show.legend = F, size = 1.1, width = 0.8) +
+  geom_boxplot(alpha = 0.1, show.legend = F, size = 1.1, width = 0.8) +
   theme_minimal(base_size = 16) +
   scale_x_continuous(breaks = seq(0, 25, 1)) +
   scale_color_manual(values = color_values) +

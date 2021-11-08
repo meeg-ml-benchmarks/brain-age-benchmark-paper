@@ -218,6 +218,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         model_name = benchmark
         n_epochs = 35
         batch_size = 256  # 64
+        cropped = True
         seed = 20211022
         X, y, model = create_dataset_target_model(
             fnames=fif_fnames,
@@ -226,6 +227,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
             n_epochs=n_epochs,
             batch_size=batch_size,
             n_jobs=N_JOBS,  # use n_jobs for parallel lazy data loading
+            cropped=cropped,
             seed=seed,
             debug=False
         )

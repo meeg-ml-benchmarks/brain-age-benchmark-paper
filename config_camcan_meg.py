@@ -60,7 +60,7 @@ N_JOBS = 30
 decim = 5 # Cam-CAN has 1000 Hz; Cuban Human Brain Project 200Hz
 
 mf_st_duration = 10.
-h_freq = None
+
 # XXX the values below differ from our previous papers but would be in line
 # with the other EEG data used in this benchmark
 epochs_tmin = 0.

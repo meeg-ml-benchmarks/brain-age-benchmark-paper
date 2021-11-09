@@ -17,6 +17,7 @@ from skorch.helper import SliceDataset
 from braindecode.datasets import WindowsDataset, BaseConcatDataset
 from braindecode.util import set_random_seeds
 from braindecode.models import ShallowFBCSPNet, Deep4Net
+from braindecode.models.modules import Expression
 from braindecode import EEGRegressor
 
 
@@ -236,16 +237,17 @@ def create_dataset(fnames, ages, preload=False, n_jobs=1, debug=False):
                 transform=DataScaler(scaling_factor=1e6), preload=False
             )
             datasets.append(ds)
-    # apply a target transform that converts: age -> [[age]]
-    # why does the transform not work?
-    # currently the TransformedTargetRegressor with StandardScaler will do the
-    # job. If it is removed, computations will fail due to target in incorrect
-    # shape. Adding the target_transform here did not solve the problem.
-    # Instead a CustomSliceDataset is needed that does the reshaping
-    return BaseConcatDataset(datasets)  #, target_transform=target_to_2d)
+    return BaseConcatDataset(datasets)
 
 
-def create_model(model_name, window_size, n_channels, seed):
+def squeeze_to_ch_x_classes(x):
+    """Squeeze the model output from any dimension to batch_size x n_classes."""
+    while x.size()[-1] == 1 and x.ndim > 2:
+        x = x.squeeze(x.ndim-1)
+    return x
+
+
+def create_model(model_name, window_size, n_channels, cropped, seed):
     """Create a braindecode model (either ShallowFBCSPNet or Deep4Net).
 
     Parameters
@@ -256,6 +258,8 @@ def create_model(model_name, window_size, n_channels, seed):
         The length of the input data time series in samples.
     n_channels: int
         The number of input data channels.
+    cropped: bool
+        A flag to switch between cropped and trialwise decoding.
     seed: int
         The seed to be used to initialize the network.
 
@@ -275,25 +279,34 @@ def create_model(model_name, window_size, n_channels, seed):
     # Set random seed to be able to reproduce results
     set_random_seeds(seed=seed, cuda=cuda)
 
+    final_conv_length = 'auto'
     if model_name == 'shallow':
+        if cropped:
+            window_size = None
+            final_conv_length = 35
         model = ShallowFBCSPNet(
             in_chans=n_channels,
             n_classes=1,
             input_window_samples=window_size,
-            final_conv_length='auto',
+            final_conv_length=final_conv_length,
         )
         lr = 0.0625 * 0.01
         weight_decay = 0
-    else:
-        assert model_name == 'deep'
+    elif model_name == 'deep':
+        if cropped:
+            window_size = None
+            final_conv_length = 1
         model = Deep4Net(
             in_chans=n_channels,
             n_classes=1,
             input_window_samples=window_size,
-            final_conv_length='auto',
+            final_conv_length=final_conv_length,
+            stride_before_pool=True,
         )
         lr = 1 * 0.01
         weight_decay = 0.5 * 0.001
+    else:
+        raise ValueError(f'Model {model_name} unknown.')
 
     # remove the softmax layer from models
     new_model = torch.nn.Sequential()
@@ -301,6 +314,10 @@ def create_model(model_name, window_size, n_channels, seed):
         if "softmax" in name:
             continue
         new_model.add_module(name, module_)
+
+    if cropped:
+        new_model.add_module('global_pool', torch.nn.AdaptiveAvgPool1d(1))
+        new_model.add_module('squeeze2', Expression(squeeze_to_ch_x_classes))
     model = new_model
 
     # Send model to GPU
@@ -348,13 +365,13 @@ def create_estimator(
     # validation set. afterwards estimator.predict(valid_X) is executed and
     # scores are computed
     callbacks = [
-        # # can be dropped if there is no interest in progress of _window_ r2
-        # # during training
-        # ("R2", BatchScoring('r2', lower_is_better=False)),
-        # # can be dropped if there is no interest in progress of _window_ mae
-        # # during training
-        # ("MAE", BatchScoring("neg_mean_absolute_error",
-        #                      lower_is_better=False)),
+        # can be dropped if there is no interest in progress of _window_ r2
+        # during training
+        ("R2", BatchScoring('r2', lower_is_better=False, on_train=True)),
+        # can be dropped if there is no interest in progress of _window_ mae
+        # during training
+        ("MAE", BatchScoring("neg_mean_absolute_error",
+                             lower_is_better=False, on_train=True)),
         ("lr_scheduler", LRScheduler('CosineAnnealingLR', T_max=n_epochs - 1)),
     ]
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -390,6 +407,7 @@ def create_dataset_target_model(
         n_epochs,
         batch_size,
         n_jobs,
+        cropped,
         seed,
         debug=False
 ):
@@ -411,6 +429,8 @@ def create_dataset_target_model(
         The size of training batches.
     n_jobs: int
         The number of workers to load data in parallel.
+    cropped: bool
+        A flag to switch between cropped and trialwise decoding.
     seed: int
         The seed to be used to initialize the network.
     debug : bool
@@ -440,6 +460,7 @@ def create_dataset_target_model(
         model_name=model_name,
         window_size=window_size,
         n_channels=n_channels,
+        cropped=cropped,
         seed=seed,
     )
     estimator = create_estimator(

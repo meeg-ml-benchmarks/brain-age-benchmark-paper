@@ -243,10 +243,6 @@ class DataScaler(object):
         return x * self.scaling_factor
 
 
-def target_to_2d(y):
-    return np.array(y).reshape(-1, 1)
-
-
 def create_dataset(fnames, ages, preload=False, n_jobs=1, debug=False):
     """Read all epochs .fif files from given fnames. Convert to braindecode
     dataset and add ages as targets.
@@ -259,6 +255,9 @@ def create_dataset(fnames, ages, preload=False, n_jobs=1, debug=False):
         Subject ages.
     preload : bool
         If True, preload the epochs.
+    n_jobs: int
+        Number of workers to read files in parallel. Without effect when
+        preload=False.
     debug : bool
         If True, return only a few sessions.
 
@@ -295,10 +294,10 @@ def create_dataset(fnames, ages, preload=False, n_jobs=1, debug=False):
     return BaseConcatDataset(datasets)
 
 
-def squeeze_to_ch_x_classes(x):
-    """Squeeze the model output from any dimension to batch_size x n_classes."""
-    while x.size()[-1] == 1 and x.ndim > 2:
-        x = x.squeeze(x.ndim-1)
+def squeeze_final_output_from_3d_to_2d(x):
+    """Squeeze the model output from 3d to 2d."""
+    assert x.size()[2] == 1
+    x = x[:, :, 0]
     return x
 
 
@@ -322,10 +321,6 @@ def create_model(model_name, window_size, n_channels, cropped, seed):
     -------
     model: braindecode.models.Deep4Net or braindecode.models.ShallowFBCSPNet
         A braindecode convolutional neural network.
-    lr: float
-        The learning rate to be used in network training.
-    weight_decay: float
-        The weight decay to be used in network training.
     """
     # check if GPU is available, if True chooses to use it
     cuda = torch.cuda.is_available()
@@ -345,8 +340,6 @@ def create_model(model_name, window_size, n_channels, cropped, seed):
             input_window_samples=window_size,
             final_conv_length=final_conv_length,
         )
-        lr = 0.0625 * 0.01
-        weight_decay = 0
     elif model_name == 'deep':
         if cropped:
             window_size = None
@@ -358,8 +351,6 @@ def create_model(model_name, window_size, n_channels, cropped, seed):
             final_conv_length=final_conv_length,
             stride_before_pool=True,
         )
-        lr = 1 * 0.01
-        weight_decay = 0.5 * 0.001
     else:
         raise ValueError(f'Model {model_name} unknown.')
 
@@ -372,7 +363,8 @@ def create_model(model_name, window_size, n_channels, cropped, seed):
 
     if cropped:
         new_model.add_module('global_pool', torch.nn.AdaptiveAvgPool1d(1))
-        new_model.add_module('squeeze2', Expression(squeeze_to_ch_x_classes))
+        new_model.add_module(
+            'squeeze2', Expression(squeeze_final_output_from_3d_to_2d))
     model = new_model
 
     # Send model to GPU
@@ -383,7 +375,7 @@ def create_model(model_name, window_size, n_channels, cropped, seed):
             print(f'Using {n_devices} GPUs.')
             model = nn.DataParallel(model)
 
-    return model, lr, weight_decay
+    return model
 
 
 def create_estimator(model, n_epochs, batch_size, lr, weight_decay,
@@ -424,9 +416,9 @@ def create_estimator(model, n_epochs, batch_size, lr, weight_decay,
     # validation set. afterwards estimator.predict(valid_X) is executed and
     # scores are computed
     callbacks = [
-        # ("R2", BatchScoring('r2', lower_is_better=False, on_train=True)),
-        # ("MAE", BatchScoring(
-        #     "neg_mean_absolute_error", lower_is_better=False, on_train=True)),
+        ("R2", BatchScoring('r2', lower_is_better=False, on_train=True)),
+        ("MAE", BatchScoring(
+            "neg_mean_absolute_error", lower_is_better=False, on_train=True)),
         ("lr_scheduler", LRScheduler('CosineAnnealingLR', T_max=n_epochs - 1)),
     ]
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -525,17 +517,23 @@ def create_dataset_target_model(
         window_size=window_size,
         n_channels=n_channels,
         cropped=cropped,
-        lr=lr,
-        weight_decay=weight_decay,
         seed=seed,
     )
+    # default hyperparameters
+    if model_name == 'shallow':
+        model_lr = 0.0625 * 0.01 if lr is None else lr
+        model_weight_decay = 0 if weight_decay is None else weight_decay
+    elif model_name == 'deep':
+        model_lr = 1 * 0.01 if lr is None else lr
+        model_weight_decay = 0.5 * 0.001 if weight_decay is None else weight_decay
+    else:
+        raise ValueError(f"Model {model_name} unknown.")
     estimator = create_estimator(
         model=model,
         n_epochs=2 if debug else n_epochs,
         batch_size=batch_size,
-        lr=model_lr if lr is None else lr,
-        weight_decay=model_weight_decay \
-            if weight_decay is None else weight_decay,
+        lr=model_lr,
+        weight_decay=model_weight_decay,
         use_valid_set=True,
         n_jobs=n_jobs,
         random_state=seed

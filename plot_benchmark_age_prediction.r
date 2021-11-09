@@ -12,7 +12,8 @@ results <- do.call(rbind, lapply(results_fnames, read.csv))
 results$X <- NULL
 
 results$dataset <- factor(
-  results$dataset, levels = c('camcan', 'lemon', 'chbp', 'tuab'),
+  results$dataset,
+  levels = c('camcan', 'lemon', 'chbp', 'tuab'),
   labels = c('Cam-CAN', 'LEMON', 'CHBP', 'TUAB'))
 
 colors <- setNames(

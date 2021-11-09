@@ -9,9 +9,11 @@ import optuna
 import pandas as pd
 from skorch.helper import SliceDataset
 from sklearn.metrics import mean_absolute_error
+from sklearn.pipeline import make_pipeline
+import coffeine
 
 from deep_learning_utils import (create_dataset_target_model, get_fif_paths,
-                                 predict_recordings)
+                                 predict_recordings, BraindecodeTrainValidSplit)
 
 
 DATASETS = ['chbp', 'lemon', 'tuab', 'camcan']
@@ -134,6 +136,6 @@ for dataset, benchmark in tasks:
     study.optimize(
         partial(objective, dataset=dataset, benchmark=benchmark), n_trials=100)
 
-    # XXX Save results
+    # Save results
     df = study.trials_dataframe()
     df.to_csv(f"./HPO/benchmark-{benchmark}_dataset-{dataset}.csv")

@@ -7,8 +7,11 @@ from functools import partial
 
 import optuna
 import pandas as pd
+from skorch.helper import SliceDataset
+from sklearn.metrics import mean_absolute_error
 
-from deep_learning_utils import create_dataset_target_model, get_fif_paths
+from deep_learning_utils import (create_dataset_target_model, get_fif_paths,
+                                 predict_recordings)
 
 
 DATASETS = ['chbp', 'lemon', 'tuab', 'camcan']
@@ -83,9 +86,11 @@ def objective(trial, dataset, benchmark):
     # XXX Add patience hyperparameter
     seed = 20211022
 
+    reduce_dimensionality = trial.suggest_categorical(
+        'reduce_dimensionality', [True, False])
     lr = trial.suggest_loguniform('lr', 1e-5, 1e-1)
-    batch_size = trial.suggest_loguniform('batch_size', 8, 1024)
-    weight_decay = trial.suggest_loguniform('lr', 1e-5, 1e-1)
+    # batch_size = trial.suggest_loguniform('batch_size', 8, 1024)
+    weight_decay = trial.suggest_loguniform('weight_decay', 1e-5, 1e-1)
 
     X, y, model = create_dataset_target_model(
         fnames=fif_fnames,
@@ -99,11 +104,27 @@ def objective(trial, dataset, benchmark):
         weight_decay=weight_decay,
         debug=True
     )
-
-    # XXX Split the data (avoid data that will be used for testing in the
-    #     benchmark)
-    # XXX Fit the model and return performance (MAE?)
-    # return mae
+    # optionally reduce the input dimension of camcan to 65 components
+    # as also done for the other benchmarks. use same parameters as in
+    # 'filterbank-riemann'
+    if dataset == 'camcan' and reduce_dimensionality:
+        pipe = make_pipeline(
+            coffeine.spatial_filters.ProjCommonSpace(
+                scale='auto', n_compo=65),
+            model,
+        )
+        model = pipe
+    # make an 80/20 split. make sure to use a different seed than the one in the
+    # benchmark to avoid accidentally ending up with optimizing one of the
+    # benchmark splits
+    ds_train, ds_valid = BraindecodeTrainValidSplit(
+        .2, random_state=20211109)(X, y)
+    # fit the model
+    model.fit(SliceDataset(ds_train, idx=0), SliceDataset(ds_train, idx=1))
+    # compute the performance on recording level
+    y_true, y_pred = predict_recordings(
+        model, SliceDataset(ds_valid, idx=0), SliceDataset(ds_valid, idx=1))
+    return mean_absolute_error(y_true, y_pred)
 
 
 #%% Run hyperparameter optimization
@@ -114,3 +135,5 @@ for dataset, benchmark in tasks:
         partial(objective, dataset=dataset, benchmark=benchmark), n_trials=100)
 
     # XXX Save results
+    df = study.trials_dataframe()
+    df.to_csv(f"./HPO/benchmark-{benchmark}_dataset-{dataset}.csv")

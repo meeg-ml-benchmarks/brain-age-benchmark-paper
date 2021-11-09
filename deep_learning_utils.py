@@ -1,23 +1,27 @@
+"""Utility functions and classes for deep learning benchmarks.
+"""
+
+from pathlib import Path
+from logging import warning
+
 import mne
 import torch
 from torch import nn
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import KFold
-from sklearn.metrics import mean_absolute_error, r2_score
+from mne_bids import BIDSPath
 from sklearn.preprocessing import StandardScaler
 from sklearn.compose import TransformedTargetRegressor
+from sklearn.model_selection import KFold, train_test_split
 from joblib.parallel import Parallel, delayed
 
-from mne_bids import BIDSPath
-
-from skorch.callbacks import LRScheduler, BatchScoring
 from skorch.helper import SliceDataset
+from skorch.callbacks import LRScheduler, BatchScoring
 
 from braindecode.datasets import WindowsDataset, BaseConcatDataset
-from braindecode.util import set_random_seeds
 from braindecode.models import ShallowFBCSPNet, Deep4Net
 from braindecode.models.modules import Expression
+from braindecode.util import set_random_seeds
 from braindecode import EEGRegressor
 
 
@@ -45,6 +49,50 @@ class BraindecodeKFold(KFold):
             if set(train_window_i) & set(valid_window_i):
                 raise RuntimeError('train and valid set overlap')
             yield train_window_i, valid_window_i
+
+
+class BraindecodeTrainValidSplit(object):
+    """Split BaseConcatDataset into train/valid sets based on a group column.
+
+    Parameters
+    ----------
+    valid_size : float
+        See `test_size` argument in `sklearn.model_selection.train_test_split`.
+    group_col : str
+        Name of column of the BaseConcatDataset's metadata to use for splitting
+        the dataset.
+    random_state : None | int
+        Random state for the splitting.
+
+    NOTE: Similar to BraindecodeKFold.split(), but only performs a single
+          split.
+    """
+    def __init__(self, valid_size, group_col='rec', random_state=None):
+        self.valid_size = valid_size
+        self.group_col = group_col
+        self.random_state = random_state
+
+    def __call__(self, dataset, y=None, groups=None):
+        if not isinstance(dataset.X.dataset, BaseConcatDataset):
+            raise TypeError('Requires a BaseConcatDataset, got '
+                            f'{type(dataset.X.dataset)}.')
+
+        group_inds = dataset.X.dataset.get_metadata()[self.group_col]
+        if isinstance(dataset.X, SliceDataset):
+            # Find indices that were used to index the dataset
+            inds = dataset.X.indices_
+            group_inds = group_inds.iloc[inds]
+
+        train_groups, valid_groups = train_test_split(
+            np.unique(group_inds), test_size=self.valid_size,
+            random_state=self.random_state)
+        idx_train = np.where(group_inds.isin(train_groups))[0]
+        idx_valid = np.where(group_inds.isin(valid_groups))[0]
+
+        dataset_train = torch.utils.data.Subset(dataset, idx_train)
+        dataset_valid = torch.utils.data.Subset(dataset, idx_valid)
+
+        return dataset_train, dataset_valid
 
 
 def predict_recordings(estimator, X, y):
@@ -147,6 +195,10 @@ def create_windows_ds_from_mne_epochs(
     braindecode.datasets.WindowsDataset
         A braindecode WindowsDataset.
     """
+    if not Path(fname).is_file():
+        warning(f'File {fname} does not exist, ignoring it.')
+        return None
+
     epochs = mne.read_epochs(fname=fname, preload=preload)
     description = {'fname': fname, 'rec': rec_i, 'age': age}
     target = -1
@@ -191,10 +243,6 @@ class DataScaler(object):
         return x * self.scaling_factor
 
 
-def target_to_2d(y):
-    return np.array(y).reshape(-1, 1)
-
-
 def create_dataset(fnames, ages, preload=False, n_jobs=1, debug=False):
     """Read all epochs .fif files from given fnames. Convert to braindecode
     dataset and add ages as targets.
@@ -207,6 +255,9 @@ def create_dataset(fnames, ages, preload=False, n_jobs=1, debug=False):
         Subject ages.
     preload : bool
         If True, preload the epochs.
+    n_jobs: int
+        Number of workers to read files in parallel. Without effect when
+        preload=False.
     debug : bool
         If True, return only a few sessions.
 
@@ -237,13 +288,16 @@ def create_dataset(fnames, ages, preload=False, n_jobs=1, debug=False):
                 transform=DataScaler(scaling_factor=1e6), preload=False
             )
             datasets.append(ds)
+
+    # Remove None from datasets list (missing files)
+    datasets = [d for d in datasets if d is not None]
     return BaseConcatDataset(datasets)
 
 
-def squeeze_to_ch_x_classes(x):
-    """Squeeze the model output from any dimension to batch_size x n_classes."""
-    while x.size()[-1] == 1 and x.ndim > 2:
-        x = x.squeeze(x.ndim-1)
+def squeeze_final_output_from_3d_to_2d(x):
+    """Squeeze the model output from 3d to 2d."""
+    assert x.size()[2] == 1
+    x = x[:, :, 0]
     return x
 
 
@@ -267,10 +321,6 @@ def create_model(model_name, window_size, n_channels, cropped, seed):
     -------
     model: braindecode.models.Deep4Net or braindecode.models.ShallowFBCSPNet
         A braindecode convolutional neural network.
-    lr: float
-        The learning rate to be used in network training.
-    weight_decay: float
-        The weight decay to be used in network training.
     """
     # check if GPU is available, if True chooses to use it
     cuda = torch.cuda.is_available()
@@ -290,8 +340,6 @@ def create_model(model_name, window_size, n_channels, cropped, seed):
             input_window_samples=window_size,
             final_conv_length=final_conv_length,
         )
-        lr = 0.0625 * 0.01
-        weight_decay = 0
     elif model_name == 'deep':
         if cropped:
             window_size = None
@@ -303,8 +351,6 @@ def create_model(model_name, window_size, n_channels, cropped, seed):
             final_conv_length=final_conv_length,
             stride_before_pool=True,
         )
-        lr = 1 * 0.01
-        weight_decay = 0.5 * 0.001
     else:
         raise ValueError(f'Model {model_name} unknown.')
 
@@ -317,7 +363,8 @@ def create_model(model_name, window_size, n_channels, cropped, seed):
 
     if cropped:
         new_model.add_module('global_pool', torch.nn.AdaptiveAvgPool1d(1))
-        new_model.add_module('squeeze2', Expression(squeeze_to_ch_x_classes))
+        new_model.add_module(
+            'squeeze2', Expression(squeeze_final_output_from_3d_to_2d))
     model = new_model
 
     # Send model to GPU
@@ -328,12 +375,11 @@ def create_model(model_name, window_size, n_channels, cropped, seed):
             print(f'Using {n_devices} GPUs.')
             model = nn.DataParallel(model)
 
-    return model, lr, weight_decay
+    return model
 
 
-def create_estimator(
-        model, n_epochs, batch_size, lr, weight_decay, n_jobs=1,
-):
+def create_estimator(model, n_epochs, batch_size, lr, weight_decay,
+                     use_valid_set=False, n_jobs=1, random_state=None):
     """Create am estimator (EEGRegressor) that implements fit/transform.
 
     Parameters
@@ -349,8 +395,13 @@ def create_estimator(
         The learning rate to be used in network training.
     weight_decay: float
         The weight decay to be used in network training.
+    use_valid_set : bool
+        If True, split the training data to collect validation performance as
+        well.
     n_jobs: int
         The number of workers to load data in parallel.
+    random_state : None | int
+        Random state, used for splitting data into train and valid sets.
 
     Returns
     -------
@@ -365,13 +416,9 @@ def create_estimator(
     # validation set. afterwards estimator.predict(valid_X) is executed and
     # scores are computed
     callbacks = [
-        # can be dropped if there is no interest in progress of _window_ r2
-        # during training
         ("R2", BatchScoring('r2', lower_is_better=False, on_train=True)),
-        # can be dropped if there is no interest in progress of _window_ mae
-        # during training
-        ("MAE", BatchScoring("neg_mean_absolute_error",
-                             lower_is_better=False, on_train=True)),
+        ("MAE", BatchScoring(
+            "neg_mean_absolute_error", lower_is_better=False, on_train=True)),
         ("lr_scheduler", LRScheduler('CosineAnnealingLR', T_max=n_epochs - 1)),
     ]
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -390,12 +437,13 @@ def create_estimator(
         optimizer__lr=lr,
         optimizer__weight_decay=weight_decay,
         max_epochs=n_epochs,
-        train_split=None,  # we do splitting via KFold object in cross_validate
         batch_size=batch_size,
         callbacks=callbacks,
         device=device,
         iterator_train__num_workers=num_workers,
         iterator_valid__num_workers=num_workers,
+        train_split=BraindecodeTrainValidSplit(
+            0.2, random_state=random_state) if use_valid_set else None
     )
     return estimator
 
@@ -409,6 +457,8 @@ def create_dataset_target_model(
         n_jobs,
         cropped,
         seed,
+        lr=None,
+        weight_decay=None,
         debug=False
 ):
     """Create an estimator (EEGRegressor) that implements fit/transform and a
@@ -433,6 +483,10 @@ def create_dataset_target_model(
         A flag to switch between cropped and trialwise decoding.
     seed: int
         The seed to be used to initialize the network.
+    lr : float | None
+        Learning rate.
+    weight_decay : float | None
+        Weight decay.
     debug : bool
         If True, return smaller dataset and estimator for quick debugging.
 
@@ -452,24 +506,37 @@ def create_dataset_target_model(
         n_jobs=n_jobs,
         debug=debug
     )
+    print(f'Loaded {len(ds.datasets)} (out of {len(fnames)} filenames).')
+
     # load a single window to get number of eeg channels and time points for
     # model creation
     x, y, _ = ds[0]
     n_channels, window_size = x.shape
-    model, lr, weight_decay = create_model(
+    model, model_lr, model_weight_decay = create_model(
         model_name=model_name,
         window_size=window_size,
         n_channels=n_channels,
         cropped=cropped,
         seed=seed,
     )
+    # default hyperparameters
+    if model_name == 'shallow':
+        model_lr = 0.0625 * 0.01 if lr is None else lr
+        model_weight_decay = 0 if weight_decay is None else weight_decay
+    elif model_name == 'deep':
+        model_lr = 1 * 0.01 if lr is None else lr
+        model_weight_decay = 0.5 * 0.001 if weight_decay is None else weight_decay
+    else:
+        raise ValueError(f"Model {model_name} unknown.")
     estimator = create_estimator(
         model=model,
         n_epochs=2 if debug else n_epochs,
         batch_size=batch_size,
-        lr=lr,
-        weight_decay=weight_decay,
+        lr=model_lr,
+        weight_decay=model_weight_decay,
+        use_valid_set=True,
         n_jobs=n_jobs,
+        random_state=seed
     )
     # use a StandardScaler to scale targets to zero mean unit variance fold
     # by fold to facilitate model training. in estimator.predict, the inverse
@@ -528,3 +595,23 @@ def get_fif_paths(dataset, cfg):
         bp = BIDSPath(**bp_args)
         fpaths.append(bp.fpath)
     return fpaths
+
+
+class HistoryTracker(object):
+    """A fake scorer that takes and saves model histories."""
+    def __init__(self):
+        self.fold_histories = []
+
+    def __call__(self, estimator, X, y):
+        self.fold_histories.append(estimator.regressor_.history_)
+        # scikit-learns requires a number return type
+        return np.nan
+
+    def to_frame(self):
+        df = list()
+        for i, fold in enumerate(self.fold_histories):
+            for epoch in fold:
+                sub_df = pd.DataFrame(epoch)
+                sub_df['fold'] = i + 1
+                df.append(sub_df)
+        return pd.concat(df, ignore_index=True)

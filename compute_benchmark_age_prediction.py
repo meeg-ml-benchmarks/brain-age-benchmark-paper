@@ -220,6 +220,10 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         batch_size = 256  # 64
         cropped = True
         seed = 20211022
+        # without effect if dataset is not camcan
+        reduce_dimensionality = False
+        # convert volts to microvolts and tesla to femtotesla
+        scaling_factor = 1e15 if dataset == 'camcan' else 1e6
         X, y, model = create_dataset_target_model(
             fnames=fif_fnames,
             ages=ages,
@@ -229,8 +233,19 @@ def load_benchmark_data(dataset, benchmark, condition=None):
             n_jobs=N_JOBS,  # use n_jobs for parallel lazy data loading
             cropped=cropped,
             seed=seed,
+            scaling_factor=scaling_factor,
             debug=False
         )
+        # optionally reduce the input dimension of camcan to 65 components
+        # as also done for the other benchmarks. use same parameters as in
+        # 'filterbank-riemann'
+        if dataset == 'camcan' and reduce_dimensionality:
+            pipe = make_pipeline(
+                coffeine.spatial_filters.ProjCommonSpace(
+                    scale='auto', n_compo=65),
+                model,
+            )
+            model = pipe
     return X, y, model
 
 # %% Run CV

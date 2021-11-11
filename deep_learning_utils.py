@@ -195,7 +195,8 @@ def target_to_2d(y):
     return np.array(y).reshape(-1, 1)
 
 
-def create_dataset(fnames, ages, preload=False, n_jobs=1, debug=False):
+def create_dataset(
+        fnames, ages, scaling_factor, preload=False, n_jobs=1, debug=False):
     """Read all epochs .fif files from given fnames. Convert to braindecode
     dataset and add ages as targets.
 
@@ -205,6 +206,8 @@ def create_dataset(fnames, ages, preload=False, n_jobs=1, debug=False):
         A list of .fif files.
     ages: array-like
         Subject ages.
+    scaling_factor: int
+        Data scaling factor.
     preload : bool
         If True, preload the epochs.
     debug : bool
@@ -226,15 +229,17 @@ def create_dataset(fnames, ages, preload=False, n_jobs=1, debug=False):
             delayed(create_windows_ds_from_mne_epochs)(
                 fname=fname, rec_i=rec_i, age=age, target_name='age',
                 # add a transform that converts data from volts to microvolts
-                transform=DataScaler(scaling_factor=1e6), preload=True)
-                for rec_i, (fname, age) in enumerate(zip(fnames, ages)))
+                transform=DataScaler(scaling_factor=scaling_factor),
+                preload=True)
+            for rec_i, (fname, age) in enumerate(zip(fnames, ages)))
     else:
         datasets = []
         for rec_i, (fname, age) in enumerate(zip(fnames, ages)):
             ds = create_windows_ds_from_mne_epochs(
                 fname=fname, rec_i=rec_i, age=age, target_name='age',
                 # add a transform that converts data from volts to microvolts
-                transform=DataScaler(scaling_factor=1e6), preload=False
+                transform=DataScaler(scaling_factor=scaling_factor),
+                preload=False
             )
             datasets.append(ds)
     return BaseConcatDataset(datasets)
@@ -409,6 +414,7 @@ def create_dataset_target_model(
         n_jobs,
         cropped,
         seed,
+        scaling_factor,
         debug=False
 ):
     """Create an estimator (EEGRegressor) that implements fit/transform and a
@@ -433,6 +439,8 @@ def create_dataset_target_model(
         A flag to switch between cropped and trialwise decoding.
     seed: int
         The seed to be used to initialize the network.
+    scaling_factor: int
+        Data scaling factor.
     debug : bool
         If True, return smaller dataset and estimator for quick debugging.
 
@@ -450,7 +458,8 @@ def create_dataset_target_model(
         ages=ages,
         preload=True,  # Set to True to avoid OSError: Too many files opened.
         n_jobs=n_jobs,
-        debug=debug
+        debug=debug,
+        scaling_factor=scaling_factor,
     )
     # load a single window to get number of eeg channels and time points for
     # model creation

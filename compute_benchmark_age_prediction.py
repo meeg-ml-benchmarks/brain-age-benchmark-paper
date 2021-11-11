@@ -224,6 +224,20 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         reduce_dimensionality = False
         # convert volts to microvolts and tesla to femtotesla
         scaling_factor = 1e15 if dataset == 'camcan' else 1e6
+        # additionally, scale data to roughly zero mean and unit variance.
+        # we have computed statistics mean and std on the datasets and will now
+        # divide the data by a constant factor to bring std closer to 1. the
+        # mean is already close to 0. it would be possible to use a scikit-learn
+        # scaler (for example RobustScaler), however, this would require that
+        # the entire data to be loaded.
+        if dataset == 'camcan':
+            # mean TODO:
+            # std 3.693e-13
+            scaling_factor = scaling_factor / 369.
+        elif dataset == 'chbp':
+            # mean -2.7116276609138564e-25
+            # std 6.609404441086206e-06
+            scaling_factor = scaling_factor / 6.6
         X, y, model = create_dataset_target_model(
             fnames=fif_fnames,
             ages=ages,

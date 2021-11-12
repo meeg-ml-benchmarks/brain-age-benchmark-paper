@@ -222,16 +222,16 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         seed = 20211022
         # without effect if dataset is not camcan
         reduce_dimensionality = False
-        # convert volts to microvolts and tesla to femtotesla
+        # convert tesla to femtotesla and volts to microvolts
         scaling_factor = 1e15 if dataset == 'camcan' else 1e6
-        # additionally, scale data to roughly zero mean and unit variance.
-        # we have computed statistics mean and std on the datasets and will now
-        # divide the data by a constant factor to bring std closer to 1. the
-        # mean is already close to 0. it would be possible to use a scikit-learn
-        # scaler (for example RobustScaler), however, this would require that
-        # the entire data to be loaded.
+        # additionally, scale data to roughly unit variance as it should
+        # facilitate training. we have computed statistics mean and std on the
+        # datasets and will now divide the data by a constant factor to bring
+        # std closer to 1. the mean is already close to 0. it would be possible
+        # to use a scikit-learn scaler (for example RobustScaler), however,
+        # this would require to load the entire data.
         if dataset == 'camcan':
-            # mean TODO:
+            # mean -5.877860123344403e-18
             # std 3.693e-13
             scaling_factor = scaling_factor / 369.
         elif dataset == 'chbp':

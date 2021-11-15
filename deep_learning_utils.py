@@ -147,7 +147,11 @@ def create_windows_ds_from_mne_epochs(
     braindecode.datasets.WindowsDataset
         A braindecode WindowsDataset.
     """
-    epochs = mne.read_epochs(fname=fname, preload=preload)
+    try:
+        epochs = mne.read_epochs(fname=fname, preload=preload)
+    except FileNotFoundError:
+        return None
+
     description = {'fname': fname, 'rec': rec_i, 'age': age}
     target = -1
     if description is not None and target_name is not None:
@@ -242,6 +246,11 @@ def create_dataset(
                 preload=False
             )
             datasets.append(ds)
+
+    # Remove None from datasets list (missing files)
+    datasets = [d for d in datasets if d is not None]
+    print(f'Loaded {len(datasets)} out of {len(fnames)} files.')
+
     return BaseConcatDataset(datasets)
 
 

@@ -213,11 +213,16 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         model = DummyRegressor(strategy="mean")
 
     elif benchmark in ['shallow', 'deep']:
-        fif_fnames = get_fif_paths(dataset, cfg)
-        ages = df_subjects.age.values
+        fif_fnames = pd.DataFrame(
+            get_fif_paths(dataset, cfg), columns=['fif_fname'])
+        fif_fnames['participant_id'] = fif_fnames['fif_fname'].apply(
+            lambda x: x.parts[-3])
+        # Only keep loaded subjects
+        df_subjects = df_subjects.merge(fif_fnames, on='participant_id')
+        ages = df_subjects['age'].values
         model_name = benchmark
         n_epochs = 35
-        batch_size = 256  # 64
+        batch_size = 256 if dataset == 'camcan' else 256
         cropped = True
         seed = 20211022
         # without effect if dataset is not camcan
@@ -239,7 +244,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
             # std 6.609404441086206e-06
             scaling_factor = scaling_factor / 6.6
         X, y, model = create_dataset_target_model(
-            fnames=fif_fnames,
+            fnames=df_subjects['fif_fname'].values,
             ages=ages,
             model_name=model_name,
             n_epochs=n_epochs,

@@ -6,6 +6,7 @@ study_name = "age-prediction-benchmark"
 # On drago
 N_JOBS = 80
 bids_root = Path("/storage/store3/data/LEMON_EEG_BIDS")
+# deriv_root = Path("/storage/store3/derivatives/LEMON_EEG_BIDS/")
 deriv_root = Path("/storage/store3/derivatives/LEMON_EEG_BIDS_2/")
 subjects_dir = Path('/storage/store/data/camcan-mne/freesurfer')
 

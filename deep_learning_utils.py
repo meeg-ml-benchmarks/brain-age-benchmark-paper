@@ -515,8 +515,8 @@ def get_fif_paths(dataset, cfg):
 
     Returns
     -------
-    fpaths: list
-        A list of viable .fif files.
+    fpaths: pd.DataFrame
+        A dataframe containing paths to viable .fif files.
     """
     cfg.session = ''
     sessions = cfg.sessions
@@ -544,5 +544,9 @@ def get_fif_paths(dataset, cfg):
         if session:
             bp_args['session'] = session
         bp = BIDSPath(**bp_args)
-        fpaths.append(bp.fpath)
-    return fpaths
+        fpaths.append({
+            'fname': bp.fpath,
+            'participant_id': 'sub-' + subject,
+            'session': session
+        })
+    return pd.DataFrame(fpaths)

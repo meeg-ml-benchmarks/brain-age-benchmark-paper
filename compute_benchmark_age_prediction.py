@@ -222,7 +222,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         ages = df_subjects['age'].values
         model_name = benchmark
         n_epochs = 35
-        batch_size = 256 if dataset == 'camcan' else 256
+        batch_size = 128 if dataset == 'camcan' else 256
         cropped = True
         seed = 20211022
         # without effect if dataset is not camcan

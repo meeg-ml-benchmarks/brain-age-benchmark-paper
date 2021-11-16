@@ -214,10 +214,12 @@ def load_benchmark_data(dataset, benchmark, condition=None):
 
     elif benchmark in ['shallow', 'deep']:
         fif_fnames = get_fif_paths(dataset, cfg)
-        ages = df_subjects.age.values
+        # Only keep loaded subjects
+        df_subjects = df_subjects.merge(fif_fnames, on='participant_id')
+        ages = df_subjects['age'].values
         model_name = benchmark
         n_epochs = 35
-        batch_size = 256  # 64
+        batch_size = 128 if dataset == 'camcan' else 256
         cropped = True
         seed = 20211022
         # without effect if dataset is not camcan
@@ -230,16 +232,16 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         # std closer to 1. the mean is already close to 0. it would be possible
         # to use a scikit-learn scaler (for example RobustScaler), however,
         # this would require to load the entire data.
-        if dataset == 'camcan':
-            # mean -5.877860123344403e-18
-            # std 3.693e-13
-            scaling_factor = scaling_factor / 369.
-        elif dataset == 'chbp':
-            # mean -2.7116276609138564e-25
-            # std 6.609404441086206e-06
-            scaling_factor = scaling_factor / 6.6
+        dataset_stds = {
+            'camcan': 369.3,  # fT
+            'chbp': 6.6,  # uV
+            'lemon': 9.1,  # uV
+            'tuab': 9.7  # uV
+        }
+        scaling_factor = scaling_factor / dataset_stds[dataset]
+
         X, y, model = create_dataset_target_model(
-            fnames=fif_fnames,
+            fnames=df_subjects['fname'].values,
             ages=ages,
             model_name=model_name,
             n_epochs=n_epochs,
@@ -260,6 +262,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
                 model,
             )
             model = pipe
+
     return X, y, model
 
 # %% Run CV

@@ -1,14 +1,14 @@
-import pathlib
+from pathlib import Path
 import mne
 
 study_name = "age-prediction-benchmark"
 
-bids_root = pathlib.Path(
-    "/storage/store3/data/LEMON_EEG_BIDS")
-
-deriv_root = pathlib.Path("/storage/store3/derivatives/LEMON_EEG_BIDS/")
-
-subjects_dir = pathlib.Path('/storage/store/data/camcan-mne/freesurfer')
+# On drago
+N_JOBS = 80
+bids_root = Path("/storage/store3/data/LEMON_EEG_BIDS")
+# deriv_root = Path("/storage/store3/derivatives/LEMON_EEG_BIDS/")
+deriv_root = Path("/storage/store3/derivatives/LEMON_EEG_BIDS_2/")
+subjects_dir = Path('/storage/store/data/camcan-mne/freesurfer')
 
 source_info_path_update = {'processing': 'autoreject',
                            'suffix': 'epo'}
@@ -35,6 +35,8 @@ eeg_template_montage = mne.channels.make_standard_montage("standard_1005")
 
 l_freq = 0.1
 h_freq = 49
+resample_sfreq = 200
+# decim = 5 # LEMON has 1000 Hz; Cuban Human Brain Project 200Hz
 
 eeg_reference = []
 
@@ -46,14 +48,10 @@ n_proj_eog = 1
 
 reject = None
 
-on_error = "abort"
 on_rename_missing_events = "warn"
 
-N_JOBS = 30
-
-decim = 5 # LEMON has 1000 Hz; Cuban Human Brain Project 200Hz 
 epochs_tmin = 0
-epochs_tmax = 10
+epochs_tmax = 10 - 1 / resample_sfreq
 baseline = None
 
 run_source_estimation = True
@@ -63,7 +61,6 @@ conditions = ["eyes/open", "eyes/closed"]
 
 event_repeated = "drop"
 l_trans_bandwidth = "auto"
-
 h_trans_bandwidth = "auto"
 
 random_state = 42
@@ -73,6 +70,4 @@ shortest_event = 1
 log_level = "info"
 
 mne_log_level = "error"
-
-# on_error = 'continue'
 on_error = "continue"

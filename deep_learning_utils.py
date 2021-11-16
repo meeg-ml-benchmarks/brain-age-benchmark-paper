@@ -228,7 +228,7 @@ def create_dataset(
         datasets = Parallel(n_jobs=n_jobs)(
             delayed(create_windows_ds_from_mne_epochs)(
                 fname=fname, rec_i=rec_i, age=age, target_name='age',
-                # add a transform that converts data from volts to roughly zero
+                # add a transform that converts data to roughly zero
                 # mean unit variance
                 transform=DataScaler(scaling_factor=scaling_factor),
                 preload=True)
@@ -238,7 +238,7 @@ def create_dataset(
         for rec_i, (fname, age) in enumerate(zip(fnames, ages)):
             ds = create_windows_ds_from_mne_epochs(
                 fname=fname, rec_i=rec_i, age=age, target_name='age',
-                # add a transform that converts data from volts to roughly zero
+                # add a transform that converts data to roughly zero
                 # mean unit variance
                 transform=DataScaler(scaling_factor=scaling_factor),
                 preload=False

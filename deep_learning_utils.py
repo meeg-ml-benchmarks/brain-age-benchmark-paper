@@ -195,10 +195,6 @@ class DataScaler(object):
         return x * self.scaling_factor
 
 
-def target_to_2d(y):
-    return np.array(y).reshape(-1, 1)
-
-
 def create_dataset(
         fnames, ages, scaling_factor, preload=False, n_jobs=1, debug=False):
     """Read all epochs .fif files from given fnames. Convert to braindecode
@@ -225,14 +221,15 @@ def create_dataset(
     if debug:
         fnames, ages = fnames[:10], ages[:10]
 
-    # TODO: The idea was to parallelize reading of fif files with joblib
-    #       parallel, however, mne.read_epochs does not work with that when
-    #       preload=False.
+    # The idea was to parallelize reading of fif files with joblib
+    # parallel, however, mne.read_epochs does not work with that when
+    # preload=False.
     if preload:
         datasets = Parallel(n_jobs=n_jobs)(
             delayed(create_windows_ds_from_mne_epochs)(
                 fname=fname, rec_i=rec_i, age=age, target_name='age',
-                # add a transform that converts data from volts to microvolts
+                # add a transform that converts data from volts to roughly zero
+                # mean unit variance
                 transform=DataScaler(scaling_factor=scaling_factor),
                 preload=True)
             for rec_i, (fname, age) in enumerate(zip(fnames, ages)))
@@ -241,7 +238,8 @@ def create_dataset(
         for rec_i, (fname, age) in enumerate(zip(fnames, ages)):
             ds = create_windows_ds_from_mne_epochs(
                 fname=fname, rec_i=rec_i, age=age, target_name='age',
-                # add a transform that converts data from volts to microvolts
+                # add a transform that converts data from volts to roughly zero
+                # mean unit variance
                 transform=DataScaler(scaling_factor=scaling_factor),
                 preload=False
             )

@@ -112,7 +112,9 @@ def extract_source_power(bp, info, subject, subjects_dir, covs):
     # Prepare label time series
     labels = mne.read_labels_from_annot('fsaverage', 'aparc_sub',
                                         subjects_dir=subjects_dir)
-
+    labels = mne.morph_labels(
+        labels, subject_from='fsaverage', subject_to=subject,
+        subjects_dir=subjects_dir)
     labels = [ll for ll in labels if 'unknown' not in ll.name]
 
     # for each frequency band
@@ -182,11 +184,11 @@ for dataset, feature_type in tasks:
     cfg, subjects = prepare_dataset(dataset)
     N_JOBS = cfg.N_JOBS if not n_jobs else n_jobs
     if DEBUG:
-        subjects = subjects[:1]
+        subjects = subjects[:10]
         N_JOBS = 1
-        frequency_bands = {"alpha": (8.0, 15.0)}
-        hc_selected_funcs = ['std']
-        hc_func_params = dict()
+        # frequency_bands = {"alpha": (8.0, 15.0)}
+        # hc_selected_funcs = ['std']
+        # hc_func_params = dict()
 
     for condition in cfg.feature_conditions:
         print(

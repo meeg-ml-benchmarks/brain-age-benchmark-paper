@@ -17,6 +17,7 @@ from skorch.helper import SliceDataset
 from braindecode.datasets import WindowsDataset, BaseConcatDataset
 from braindecode.util import set_random_seeds
 from braindecode.models import ShallowFBCSPNet, Deep4Net
+from braindecode.models.util import to_dense_prediction_model
 from braindecode.models.modules import Expression
 from braindecode import EEGRegressor
 
@@ -321,6 +322,9 @@ def create_model(model_name, window_size, n_channels, cropped, seed):
         weight_decay = 0.5 * 0.001
     else:
         raise ValueError(f'Model {model_name} unknown.')
+
+    if cropped:
+        to_dense_prediction_model(model)
 
     # remove the softmax layer from models
     new_model = torch.nn.Sequential()

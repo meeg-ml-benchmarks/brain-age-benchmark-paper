@@ -11,13 +11,6 @@ from mne.io.brainvision.brainvision import _aux_vhdr_info
 
 from mne_bids import write_raw_bids, print_dir_tree, make_report, BIDSPath
 
-lemon_info = pd.read_csv(
-    "./META_File_IDs_Age_Gender_Education_Drug_Smoke_SKID_LEMON.csv")
-lemon_info = lemon_info.set_index("ID")
-eeg_subjects = pd.read_csv('./lemon_eeg_subjects.csv')
-lemon_info = lemon_info.loc[eeg_subjects.subject]
-lemon_info['gender'] = lemon_info['Gender_ 1=female_2=male'].map({1: 2, 2: 1})
-subjects = list(lemon_info.index)
 
 def convert_lemon_to_bids(lemon_data_dir, bids_save_dir, n_jobs=1, DEBUG=False):
     """Convert TUAB dataset to BIDS format.
@@ -46,13 +39,6 @@ def convert_lemon_to_bids(lemon_data_dir, bids_save_dir, n_jobs=1, DEBUG=False):
         dict(subjects= bad_subjects, error=errs))
     bad_subjects.to_csv(
         '/storage/store3/data/LEMON_EEG_BIDS/bids_conv_erros.csv')
-    # update the participants file as LEMON has no official age data
-    participants = pd.read_csv(
-        "/storage/store3/data/LEMON_EEG_BIDS/participants.tsv", sep='\t')
-    participants = participants.set_index("participant_id")
-    participants.loc[subjects_, 'age'] = lemon_info.loc[subjects_, 'age']
-    participants.to_csv(
-        "/storage/store3/data/LEMON_EEG_BIDS/participants.tsv", sep='\t')
 
 
 def _convert_subject(subject, data_path, bids_save_dir):
@@ -67,10 +53,10 @@ def _convert_subject(subject, data_path, bids_save_dir):
         sub_id = subject.strip("sub-")
         raw.info['subject_info'] = {
             'participant_id': sub_id,
-            'sex': lemon_info.loc[subject, 'gender'],
+            'sex': lemon_info.loc[subject, 'sex'],
             'age': lemon_info.loc[subject, 'age'],
             # XXX LEMON shares no public age 
-            'hand': lemon_info.loc[subject, 'Handedness']
+            # 'hand': lemon_info.loc[subject, 'Handedness']
         }
         events, _ = mne.events_from_annotations(raw)
 
@@ -112,9 +98,10 @@ if __name__ == '__main__':
         help='activate debugging mode')
     args = parser.parse_args()
 
-    age_info = pd.read_csv(args.bids_data_dir + '/participants.tsv',
-                           sep='\t')
-    lemon_info['age'] = age_info['Age']
+    lemon_info = pd.read_csv(str(args.bids_data_dir) + '/participants.tsv',
+                             sep='\t')
+    subjects = list(lemon_info['participant_id'])
+
     convert_lemon_to_bids(
         args.lemon_data_dir, args.bids_data_dir, n_jobs=args.n_jobs,
         DEBUG=args.DEBUG)

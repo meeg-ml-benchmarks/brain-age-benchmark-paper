@@ -1,11 +1,20 @@
 import pathlib
 
+
+def get_t1_from_meg(bids_path):
+    bids_path.update(root='/storage/store/data/camcan/BIDSsep/anat',
+                     datatype='anat',
+                     session=None,
+                     suffix='T1w')
+    return bids_path
+
+
 study_name = "age-prediction-benchmark"
 
 bids_root = pathlib.Path(
     '/storage/store/data/camcan/BIDSsep/rest')
 
-deriv_root = pathlib.Path('/storage/store3/derivatives/camcan-bids/derivatives')
+deriv_root = pathlib.Path('/storage/store3/work/amellot/derivatives/perso_mri_bench/camcan_bids/emptyroom')
 
 subjects_dir = pathlib.Path('/storage/store/data/camcan-mne/freesurfer')
 
@@ -14,7 +23,9 @@ source_info_path_update = {'processing': 'autoreject',
 
 inverse_targets = []
 
-noise_cov = 'ad-hoc'
+process_er = True
+raw_path_er = '/storage/store/data/camcan/camcan47/cc700/meg/pipeline/release004/emptyroom'
+noise_cov = 'emptyroom'
 
 task = 'rest'
 sessions = ['rest']  # keep empty for code flow
@@ -76,7 +87,9 @@ find_flat_channels_meg = True
 find_noisy_channels_meg = True
 use_maxwell_filter = True
 run_source_estimation = True
-use_template_mri = True
+# use_template_mri = True
+bem_mri_images = 'T1'
+mri_t1_path_generator = get_t1_from_meg
 
 event_repeated = "drop"
 l_trans_bandwidth = "auto"
@@ -91,5 +104,5 @@ log_level = "info"
 
 mne_log_level = "error"
 
-# on_error = 'continue'
-on_error = "continue"
+on_error = 'continue'
+# on_error = "debug"

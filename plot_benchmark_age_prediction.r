@@ -78,8 +78,11 @@ names(agg_cv)[3:4] <- c(expression(R^2), "+/-")
 agg_cv$MAE <- aggregate(MAE ~ benchmark + dataset, data = results_out, FUN = mean)$MAE
 agg_cv$MAEsd <- aggregate(MAE ~ benchmark + dataset, data = results_out, FUN = sd)$MAE
 names(agg_cv)[6] <- "+/-"
-
 agg_cv <- agg_cv[,c('dataset', 'benchmark', names(agg_cv)[-c(1, 2)])]
+for (ii in 3:6)
+{
+  cell_spec(agg_cv[, ii], format = 'r')
+}
 tab <- kbl(agg_cv, caption = "Table 1. Cross-validation results across benchmarks and datasets", digits = 2)
 tab <- kable_classic(tab, full_width = F, html_font = "Arial")
 tab <- column_spec(tab, 1:2, width = "10em")

@@ -126,13 +126,17 @@ def extract_source_power(bp, info, subject, subjects_dir, covs):
                              projs=info['projs'],
                              nfree=0)  # nfree ?
         stc = apply_inverse_cov(cov, info, inv,
+                                lambda2=1. / 9.,
+                                pick_ori='normal',
                                 nave=1,
-                                method="dSPM")
+                                method="MNE",
+                                verbose=False)
 
         label_power = mne.extract_label_time_course(stc,
                                                     labels,
                                                     inv['src'],
-                                                    mode="mean")
+                                                    mode="mean",
+                                                    verbose=False)
         result.append(np.diag(label_power[:,0]))
     return result
 

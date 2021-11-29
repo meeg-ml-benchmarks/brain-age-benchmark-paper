@@ -88,6 +88,7 @@ run_source_estimation = True
 # use_template_mri = True
 bem_mri_images = 'T1'
 mri_t1_path_generator = get_t1_from_meg
+mindist = 0
 
 event_repeated = "drop"
 l_trans_bandwidth = "auto"

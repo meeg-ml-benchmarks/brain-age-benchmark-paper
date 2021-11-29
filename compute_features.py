@@ -112,6 +112,9 @@ def extract_source_power(bp, info, subject, subjects_dir, covs):
     # Prepare label time series
     labels = mne.read_labels_from_annot('fsaverage', 'aparc_sub',
                                         subjects_dir=subjects_dir)
+    labels = mne.morph_labels(
+        labels, subject_from='fsaverage', subject_to=subject,
+        subjects_dir=subjects_dir)
 
     labels = [ll for ll in labels if 'unknown' not in ll.name]
 

@@ -222,8 +222,6 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         batch_size = 128 if dataset == 'camcan' else 256
         cropped = True
         seed = 20211022
-        # without effect if dataset is not camcan
-        reduce_dimensionality = False
         # convert tesla to femtotesla and volts to microvolts
         scaling_factor = 1e15 if dataset == 'camcan' else 1e6
         # additionally, scale data to roughly unit variance as it should
@@ -250,19 +248,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
             cropped=cropped,
             seed=seed,
             scaling_factor=scaling_factor,
-            debug=False
         )
-        # optionally reduce the input dimension of camcan to 65 components
-        # as also done for the other benchmarks. use same parameters as in
-        # 'filterbank-riemann'
-        if dataset == 'camcan' and reduce_dimensionality:
-            pipe = make_pipeline(
-                coffeine.spatial_filters.ProjCommonSpace(
-                    scale='auto', n_compo=65),
-                model,
-            )
-            model = pipe
-
     return X, y, model
 
 # %% Run CV
@@ -276,7 +262,6 @@ def run_benchmark_cv(benchmark, dataset):
         return
 
     metrics = [mean_absolute_error, r2_score]
-    results = list()
     cv_params = dict(n_splits=10, shuffle=True, random_state=42)
 
     if benchmark in ['shallow', 'deep']:

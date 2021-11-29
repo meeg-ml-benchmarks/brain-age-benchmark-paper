@@ -1,6 +1,5 @@
 import pathlib
 
-
 def get_t1_from_meg(bids_path):
     bids_path.update(root='/storage/store/data/camcan/BIDSsep/anat',
                      datatype='anat',
@@ -66,7 +65,7 @@ reject = None
 
 on_rename_missing_events = "warn"
 
-N_JOBS = 30
+N_JOBS = 40
 
 decim = 5 # Cam-CAN has 1000 Hz; Cuban Human Brain Project 200Hz
 
@@ -90,6 +89,7 @@ run_source_estimation = True
 # use_template_mri = True
 bem_mri_images = 'T1'
 mri_t1_path_generator = get_t1_from_meg
+mindist = 0
 
 event_repeated = "drop"
 l_trans_bandwidth = "auto"

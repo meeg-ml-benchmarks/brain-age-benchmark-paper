@@ -201,7 +201,6 @@ def load_benchmark_data(dataset, benchmark, condition=None):
             RandomForestRegressor(n_estimators=1000,
                                   random_state=42),
             param_grid=param_grid,
-            iid=False,
             cv=5)
         model = make_pipeline(
             FunctionTransformer(aggregate_features, kw_args={'func': 'mean'}),

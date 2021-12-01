@@ -57,7 +57,6 @@ frequency_bands = {
 }
 hc_selected_funcs = [
     'std',
-    'rms',
     'kurtosis',
     'skewness',
     'quantile',
@@ -75,8 +74,7 @@ hc_selected_funcs = [
     'wavelet_coef_energy',
     'higuchi_fd',
     'zero_crossings',
-    'svd_fisher_info',
-    'phase_lock_val'
+    'svd_fisher_info'
 ]
 hc_func_params = {
     'quantile__q': [0.1, 0.25, 0.75, 0.9],

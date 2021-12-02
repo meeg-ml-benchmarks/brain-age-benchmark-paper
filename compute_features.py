@@ -106,10 +106,11 @@ def extract_source_power(bp, info, subject, subjects_dir, covs):
     fname_inv = bp.copy().update(suffix='inv',
                                  processing=None,
                                  extension='.fif')
-    inv = mne.minimum_norm.read_inverse_operator(fname_inv)
+    inv = mne.minimum_norm.read_inverse_operator(fname_inv, verbose=False)
     # Prepare label time series
     labels = mne.read_labels_from_annot('fsaverage', 'aparc_sub',
-                                        subjects_dir=subjects_dir)
+                                        subjects_dir=subjects_dir,
+                                        verbose=False)
     labels = mne.morph_labels(
         labels, subject_from='fsaverage', subject_to=subject,
         subjects_dir=subjects_dir)
@@ -170,7 +171,7 @@ def run_subject(subject, cfg, condition):
         elif feature_type == 'handcrafted':
             out = extract_handcrafted_feats(epochs, condition)
         elif feature_type == 'source_power':
-            covs = extract_fb_covs(epochs[:5], condition)
+            covs = extract_fb_covs(epochs, condition)
             covs = covs['covs']
             out = extract_source_power(
                 bp, epochs.info, subject, cfg.subjects_dir, covs)
@@ -186,9 +187,9 @@ for dataset, feature_type in tasks:
     cfg, subjects = prepare_dataset(dataset)
     N_JOBS = cfg.N_JOBS if not n_jobs else n_jobs
     if DEBUG:
-        subjects = subjects[:10]
+        subjects = subjects[:1]
         N_JOBS = 1
-        # frequency_bands = {"alpha": (8.0, 15.0)}
+        frequency_bands = {"alpha": (8.0, 15.0)}
         # hc_selected_funcs = ['std']
         # hc_func_params = dict()
 

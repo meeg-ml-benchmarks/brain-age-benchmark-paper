@@ -164,7 +164,7 @@ def run_subject(subject, cfg, condition):
         elif feature_type == 'handcrafted':
             out = extract_handcrafted_feats(epochs, condition)
         elif feature_type == 'source_power':
-            covs = extract_fb_covs(epochs[:5], condition)
+            covs = extract_fb_covs(epochs, condition)
             covs = covs['covs']
             out = extract_source_power(
                 bp, epochs.info, subject, cfg.subjects_dir, covs)

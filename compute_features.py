@@ -57,7 +57,6 @@ frequency_bands = {
 }
 hc_selected_funcs = [
     'std',
-    'rms',
     'kurtosis',
     'skewness',
     'quantile',
@@ -75,8 +74,7 @@ hc_selected_funcs = [
     'wavelet_coef_energy',
     'higuchi_fd',
     'zero_crossings',
-    'svd_fisher_info',
-    'phase_lock_val'
+    'svd_fisher_info'
 ]
 hc_func_params = {
     'quantile__q': [0.1, 0.25, 0.75, 0.9],
@@ -171,7 +169,7 @@ def run_subject(subject, cfg, condition):
         elif feature_type == 'handcrafted':
             out = extract_handcrafted_feats(epochs, condition)
         elif feature_type == 'source_power':
-            covs = extract_fb_covs(epochs[:5], condition)
+            covs = extract_fb_covs(epochs, condition)
             covs = covs['covs']
             out = extract_source_power(
                 bp, epochs.info, subject, cfg.subjects_dir, covs)

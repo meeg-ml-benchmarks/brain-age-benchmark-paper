@@ -1,5 +1,6 @@
 import pathlib
 
+
 def get_t1_from_meg(bids_path):
     bids_path.update(root='/storage/store/data/camcan/BIDSsep/anat',
                      datatype='anat',
@@ -51,7 +52,7 @@ analyze_channels = ['MEG0111', 'MEG0121', 'MEG0131', 'MEG0141', 'MEG0211',
     'MEG2641']
 
 l_freq = 0.1
-h_freq = 49
+h_freq = None
 
 eeg_reference = []
 

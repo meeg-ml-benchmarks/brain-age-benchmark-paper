@@ -74,16 +74,16 @@ results_out <- results[,c('MAE', 'r2', 'benchmark', 'dataset')]
 
 agg_cv <- aggregate(r2 ~ benchmark + dataset, data = results_out, FUN = mean)
 agg_cv$r2sd <- aggregate(r2 ~ benchmark + dataset, data = results_out, FUN = sd)$r2
-names(agg_cv)[3:4] <- c(expression(R^2), "+/-")
+names(agg_cv)[3:4] <- c(expression(R^2(M)), expression(R^2(SD)))
 agg_cv$MAE <- aggregate(MAE ~ benchmark + dataset, data = results_out, FUN = mean)$MAE
 agg_cv$MAEsd <- aggregate(MAE ~ benchmark + dataset, data = results_out, FUN = sd)$MAE
-names(agg_cv)[6] <- "+/-"
+names(agg_cv)[5:6] <- c("MAE(M)", "MAE(SD)")
 agg_cv <- agg_cv[,c('dataset', 'benchmark', names(agg_cv)[-c(1, 2)])]
 for (ii in 3:6)
 {
   cell_spec(agg_cv[, ii], format = 'r')
 }
-tab <- kbl(agg_cv, caption = "Table 1. Cross-validation results across benchmarks and datasets", digits = 2)
+tab <- kbl(agg_cv, caption = "Table 1. Aggregate cross-validation results across benchmarks and datasets", digits = 2)
 tab <- kable_classic(tab, full_width = F, html_font = "Arial")
 tab <- column_spec(tab, 1:2, width = "10em")
 tab <- column_spec(tab, 3:6, width = "5em")

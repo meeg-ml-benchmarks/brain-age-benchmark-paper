@@ -5,6 +5,8 @@ This is repository presents the code, the tools and resources developed in the c
 [1] D. Engemann, A. Mellot, R. Höchenberger, H. Banville, D. Sabbagh, L. Gemein, T. Ball, and A. Gramfort.
 (in preparation). 
 
+---
+
 ## Exploring the aggregated results using the plotting scripts
 
 For convenience, we provide aggregated group-level results facilitating exploration.
@@ -25,11 +27,10 @@ install.packages(c("ggplot2", "scales", "ggThemes", "patchwork", "kableExtra"))
 
 The demographic data can be plotted using ```plot_demography.r```. Note however that the input file contains individual-specific data and cannot be readily shared. Computing the input tables can be done using ```gather_demographics_info.py``` provided that all input datasets are correctly downloaded and stored in the BIDS format. 
 
-## Computing the intermediate outputs
+---
 
-To run the code please consider the following instructions.
-
-### General worklfow
+General worklfow for computing intermediate outputs
+---------------------------------------------------
 
 Here we considered 4 datasets that can be programmatically downloaded from their respective websites linked below:
 
@@ -118,7 +119,9 @@ python compute_benchmark_age_prediction.py --n_jobs 10
 
 If all worked until now out you should find the fold-wise scores for every benchmark on every dataset in ```./results``` 
 
-### Datset-specific peculiarities
+---
+Handling datset-specific peculiarities prior to computation
+-----------------------------------------------------------
 
 For some of the datasets, custom processing of the input data was necessary.
 
@@ -207,6 +210,8 @@ Note that future version of the dataset may require modifiactions to this approa
 
 After downlaodgin the TUAB data, we first needed create a BIDS datasset.
 The effort is summarized in ```convert_tuh_to_bids.py```
+
+---
 
 ### Installation of packages and dependencies
 

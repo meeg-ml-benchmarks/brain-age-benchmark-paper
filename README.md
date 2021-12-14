@@ -120,32 +120,104 @@ If all worked until now out you should find the fold-wise scores for every bench
 
 ### Datset-specific peculiarities
 
-### Installation of packages and dependencies
+For some of the datasets, custom processing of the input data was necessary.
 
-1. MNE stable: https://mne.tools/stable/install/index.html
+#### Cam-CAN
 
-2. [coffeine](https://github.com/dengemann/coffeine) + dependencies: <!-- XXX : pip install coffeine is enough no? -->
+The dataset was provided in BIDS format by the curators of the Cam-CAN.
+Computation worked out of the box.
+Note that previous releases were not provided in BIDS format.
+Moreover, Maxwell filtering was applied for mitigating strong environmental magnetic artifacts which is only available for MEG and not EEG.
 
-    a. https://github.com/dengemann/coffeine#installation-of-python-package
+#### LEMON
 
-    b. https://pyriemann.readthedocs.io/en/latest/installing.html
+##### download
 
-    c. https://scikit-learn.org/stable/install.html
+The data provided by LEMON can be convenient to use our custom download script.
 
-3. MNE-bids: https://mne.tools/mne-bids/v0.3/index.html
+```download_data_lemon.py```
 
-4. MNE-bids-pipeline: https://mne.tools/mne-bids-pipeline/getting_started/install.html
+Make sure to adjust the paths to make this work on your machine.
+Also note that the the script presupposes that the ```ETA_File_IDs_Age_Gender_Education_Drug_Smoke_SKID_LEMON.csv``` file has been dowloaded to this repository.
 
-5. [Braindecode](https://github.com/braindecode/braindecode) and [pytorch](http://pytorch.org/) for deep learning benchmarks
+##### finishing BIDS conversion
 
-*Note:* the bids pipeline is a bit different from other packages. Instead of installing it as a library it is more like a collection of scripts. Installing it means cloning the GitHub repository and making sure the dependencies are met (link above).
+Further steps are necessary to obtain a fully operable BIDS dataset.
+That effort is summarized in ```convert_lemon_to_bids.py```
 
-### Running the code
+##### manual fixes
 
-Assuming that `mne-bids-pipeline` is downloaded in the parent directory of this repository you can kick-off the preprocessing like:
+We noticed that for the following subjects the header files were pointing to
+data files with an old naming scheme, leading to errors upon file-reading.
+
+- sub-010193
+- sub-010044
+- sub-010219
+- sub-010020
+- sub-010203
+
+For these subjects, we had to manually edit the *.vhdr files to point to the bids name of the marker and data files, e.g. sub-010193.eeg, sub-010193.vmrk.
+This error may be fixed in a future release of the LEMON data.
+
+#### CHBP
+
+##### download
+
+The data can be downloaded from synapse: https://doi.org/10.7303/syn22324937 
+
+It can be handy to use the command-line client for programmatic download, which can be installed using pip: 
 
 ```bash
-python ../mne-bids-pipeline/run.py --config config_chbp_eeg.py --steps=preprocessing
+pip install synapseclient
 ```
 
-Then run `compute_autoreject.py`, `compute_features.py` and `compute_brain_age.py`.
+Then one can login using one's credentials ...
+
+```bash
+synapse login -u "username" -p "password"
+```
+
+... and download specific folders recursively:
+
+```bash
+synapse get -r syn22324937
+```
+
+##### finishing BIDS conversion
+
+Further steps were needed to satisfy the needs make the CHBP data work using the MNE-BIDS package.
+
+The effort is summarized in ```convert_chbp_to_bids.py```
+
+Note that future version of the dataset may require modifiactions to this approach or render some of these measures unncessary.
+
+The current work is based on the dataset as it was available in July 2021.
+
+##### Manual fixes
+
+We found a bug in the participants.tsv file, leading to issues with the BIDS validator.
+In the input data (July 2021), one can find a trailing whitespace until line 251. Then the line terminates at the last character of the “sex” column (F/M). We removed the whitespaces
+to ensure proper file-parsing.
+
+Note that future version of the dataset may require modifiactions to this approach or render some of these measures unncessary.
+
+#### TUAB
+
+##### BIDS conversion
+
+After downlaodgin the TUAB data, we first needed create a BIDS datasset.
+The effort is summarized in ```convert_tuh_to_bids.py```
+
+### Installation of packages and dependencies
+
+The development initiated by this work has been stabilized and released in the latest versions of packages we list as dependencies below. You can install these packages using pip. For their respective dependencies, consider the package websites.
+
+1. [MNE](https://mne.tools/stable/install/index.html)
+
+2. [MNE-bids](https://mne.tools/mne-bids/v0.3/index.html)
+
+3. [coffeine](https://github.com/coffeine-labs/coffeine) 
+
+4. [Braindecode](https://github.com/braindecode/braindecode)
+
+The MNE-BIDS repository is not a package in the classical sense. We recommend using the latest version from GitHub. Please consider the installation instructions: https://mne.tools/mne-bids-pipeline/getting_started/install.html

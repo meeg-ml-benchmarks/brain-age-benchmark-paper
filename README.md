@@ -62,7 +62,7 @@ python ../mne-bids-pipeline/run.py --config config_chbp_eeg.py --n_jobs 40 --ste
 python ../mne-bids-pipeline/run.py --config config_tuab_eeg.py --n_jobs 40 --steps=preprocessing
 ```
 
-*Note:* Make sure to choose an appropriate number of jobs given your the number of CPU cores available on your computer.
+*Note:* Make sure to choose an appropriate number of jobs given the number of CPU cores available on your computer.
 
 *Note:* It can be convenient to run these commands from within IPython e.g. to benefit from a nicer Terminal experience during debugging. Start IPython and use ```run``` instead of ```python```.
 This will apply filtering and epoching according to the settings in the config files.
@@ -74,6 +74,12 @@ python compute_autoreject.py --n_jobs 40
 ```
 
 *Note:* This will run computation for all datasets. To perform this step on specific datasets, check out the `-d` argument.
+
+Now, covariances can be computed with ```compute_features.py``` and are necessary for the next step :
+
+```bash
+python compute_features.py --n_jobs 40 --t=fb_covs
+```
 
 Once this is done, the additional processing needed for the filterbank-source models has to be conducted:
 
@@ -118,7 +124,7 @@ If all worked until now out you should find the fold-wise scores for every bench
 
 ---
 
-Handling datset-specific peculiarities prior to computation
+Handling dataset-specific peculiarities prior to computation
 -----------------------------------------------------------
 
 For some of the datasets, custom processing of the input data was necessary.

@@ -217,8 +217,10 @@ The development initiated by this work has been stabilized and released in the l
 
 2. [MNE-bids](https://mne.tools/mne-bids/v0.3/index.html)
 
-3. [coffeine](https://github.com/coffeine-labs/coffeine)
+4. [AutoReject](https://autoreject.github.io/stable/index.html)
 
-4. [Braindecode](https://github.com/braindecode/braindecode)
+5. [coffeine](https://github.com/coffeine-labs/coffeine)
+
+6. [Braindecode](https://github.com/braindecode/braindecode)
 
 The MNE-BIDS repository is not a package in the classical sense. We recommend using the latest version from GitHub. Please consider the installation instructions: https://mne.tools/mne-bids-pipeline/getting_started/install.html

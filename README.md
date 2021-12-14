@@ -1,12 +1,29 @@
-# M/EEG brain age prediction benchmark project
+# M/EEG brain age prediction benchmark paper
 
-Age prediction benchmark project
+This is repository presents the code, the tools and resources developed in the course of [1]. To reuse the code, please follow the instructions and recommendations below.
 
-## Notebooks
+[1] D. Engemann, A. Mellot, R. Höchenberger, H. Banville, D. Sabbagh, L. Gemein, T. Ball, and A. Gramfort.
+(in preparation). 
 
-Check out:
+## Exploring the aggregated results using the plotting scripts
 
-1. `plot_eeg_features_and_build_a_simple_model.ipynb`
+For convenience, we provide aggregated group-level results facilitating exploration.
+
+1. Aggregate information on demographics is presented in: ```./outputs/demog_summary_table.csv```
+2. Aggregate cross-validation results can be found for every dataset and benchmark in: ```./results/```. Filenames indicate the benchmark and the dataset as in ```./results/benchmark-deep_dataset-lemon.csv``` for the deep-learning benchmark on the LEMON dataset.
+
+The scripts used for generating the figures and tables presented in the paper can be a good starting point.
+All plots and tables were generated using ```plot_benchmark_age_prediction.r```.
+
+The R code is using few dependencies and base-r idioms supporting newer as well as older versions of R.
+
+If needed, dendencies can be installed as follows:
+
+```R
+install.packages(c("ggplot2", "scales", "ggThemes", "patchwork", "kableExtra"))
+```
+
+The demographic data can be plotted using ```plot_demography.r```. Note however that the input file contains individual-specific data and cannot be readily shared. Computing the input tables can be done using ```gather_demographics_info.py``` provided that all input datasets are correctly downloaded and stored in the BIDS format. 
 
 ## Computing the intermediate outputs
 

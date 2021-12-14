@@ -131,7 +131,7 @@ Moreover, Maxwell filtering was applied for mitigating strong environmental magn
 
 #### LEMON
 
-##### download
+##### Downloading the data
 
 The data provided by LEMON can be convenient to use our custom download script.
 
@@ -140,12 +140,12 @@ The data provided by LEMON can be convenient to use our custom download script.
 Make sure to adjust the paths to make this work on your machine.
 Also note that the the script presupposes that the ```ETA_File_IDs_Age_Gender_Education_Drug_Smoke_SKID_LEMON.csv``` file has been dowloaded to this repository.
 
-##### finishing BIDS conversion
+##### Finishing BIDS conversion
 
 Further steps are necessary to obtain a fully operable BIDS dataset.
 That effort is summarized in ```convert_lemon_to_bids.py```
 
-##### manual fixes
+##### Manual fixes
 
 We noticed that for the following subjects the header files were pointing to
 data files with an old naming scheme, leading to errors upon file-reading.
@@ -161,7 +161,7 @@ This error may be fixed in a future release of the LEMON data.
 
 #### CHBP
 
-##### download
+##### Downloading the data
 
 The data can be downloaded from synapse: https://doi.org/10.7303/syn22324937 
 
@@ -183,7 +183,7 @@ synapse login -u "username" -p "password"
 synapse get -r syn22324937
 ```
 
-##### finishing BIDS conversion
+##### Finishing BIDS conversion
 
 Further steps were needed to satisfy the needs make the CHBP data work using the MNE-BIDS package.
 

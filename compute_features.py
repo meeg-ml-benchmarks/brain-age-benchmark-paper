@@ -106,11 +106,14 @@ def extract_source_power(bp, info, subject, subjects_dir, covs):
     fname_inv = bp.copy().update(suffix='inv',
                                  processing=None,
                                  extension='.fif')
-    inv = mne.minimum_norm.read_inverse_operator(fname_inv)
+    inv = mne.minimum_norm.read_inverse_operator(fname_inv, verbose=False)
     # Prepare label time series
     labels = mne.read_labels_from_annot('fsaverage', 'aparc_sub',
-                                        subjects_dir=subjects_dir)
-
+                                        subjects_dir=subjects_dir,
+                                        verbose=False)
+    labels = mne.morph_labels(
+        labels, subject_from='fsaverage', subject_to=subject,
+        subjects_dir=subjects_dir)
     labels = [ll for ll in labels if 'unknown' not in ll.name]
 
     # for each frequency band
@@ -122,13 +125,17 @@ def extract_source_power(bp, info, subject, subjects_dir, covs):
                              projs=info['projs'],
                              nfree=0)  # nfree ?
         stc = apply_inverse_cov(cov, info, inv,
+                                lambda2=1. / 9.,
+                                pick_ori='normal',
                                 nave=1,
-                                method="dSPM")
+                                method="MNE",
+                                verbose=False)
 
         label_power = mne.extract_label_time_course(stc,
                                                     labels,
                                                     inv['src'],
-                                                    mode="mean")
+                                                    mode="mean",
+                                                    verbose=False)
         result.append(np.diag(label_power[:,0]))
     return result
 
@@ -183,8 +190,8 @@ for dataset, feature_type in tasks:
         subjects = subjects[:1]
         N_JOBS = 1
         frequency_bands = {"alpha": (8.0, 15.0)}
-        hc_selected_funcs = ['std']
-        hc_func_params = dict()
+        # hc_selected_funcs = ['std']
+        # hc_func_params = dict()
 
     for condition in cfg.feature_conditions:
         print(

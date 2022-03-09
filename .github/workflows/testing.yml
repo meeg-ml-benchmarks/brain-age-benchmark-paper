@@ -1,0 +1,31 @@
+name: testing
+
+on: [pull_request]
+
+jobs:
+  plot_publish:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.8
+
+    - name: Install dependencies
+      env:
+        # Need to be of format repo:branch.
+        BENCHOPT_BRANCH: benchopt:master
+      run: |
+        pip install -r requirements.txt
+
+    - name: Render
+      run: |
+        make render
+
+    - name: Upload results
+      uses: actions/upload-artifact@v2
+      with:
+        name: results
+        path: build

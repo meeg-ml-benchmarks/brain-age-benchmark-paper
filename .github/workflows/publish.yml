@@ -1,0 +1,36 @@
+name: publish
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  plot_publish:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.8
+
+    - name: Install dependencies
+      env:
+        # Need to be of format repo:branch.
+        BENCHOPT_BRANCH: benchopt:master
+      run: |
+        pip install -r requirements.txt
+
+    - name: Render
+      run: |
+        make render
+
+    - name: Deploy 🚀
+      uses: JamesIves/github-pages-deploy-action@3.7.1
+      with:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        BRANCH: gh-pages # The branch the action should deploy to.
+        FOLDER: build # The folder the action should deploy.
+        CLEAN: true # Automatically remove deleted files from the deploy branch

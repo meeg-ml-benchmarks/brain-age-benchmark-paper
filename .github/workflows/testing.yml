@@ -14,18 +14,16 @@ jobs:
         python-version: 3.8
 
     - name: Install dependencies
-      env:
-        # Need to be of format repo:branch.
-        BENCHOPT_BRANCH: benchopt:master
       run: |
-        pip install -r requirements.txt
+        pip install -r doc/requirements.txt
 
     - name: Render
       run: |
+        cd doc
         make render
 
     - name: Upload results
       uses: actions/upload-artifact@v2
       with:
         name: results
-        path: build
+        path: doc/build

@@ -17,14 +17,12 @@ jobs:
         python-version: 3.8
 
     - name: Install dependencies
-      env:
-        # Need to be of format repo:branch.
-        BENCHOPT_BRANCH: benchopt:master
       run: |
-        pip install -r requirements.txt
+        pip install -r doc/requirements.txt
 
     - name: Render
       run: |
+        cd doc
         make render
 
     - name: Deploy 🚀
@@ -32,5 +30,5 @@ jobs:
       with:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         BRANCH: gh-pages # The branch the action should deploy to.
-        FOLDER: build # The folder the action should deploy.
+        FOLDER: doc/build # The folder the action should deploy.
         CLEAN: true # Automatically remove deleted files from the deploy branch

@@ -21,15 +21,17 @@ article, aside, figcaption, figure, footer, header, nav, section {
 /* PARAGRAPHS */
 h1, h2, h3, h4 {
   line-height: 1.25; /* Bigger text is often nicer with smaller line height */
-  font-weight: bold; /* Browser default. Use `normal` for less bulky titles */
+  font-weight: bold; /* Browser default. Use `normale` for less bulky titles */
 }
 h1 {
-    margin: 2em 0 .5em; /* Titles should be close to the text they describe */
-    font-size: 2em;
+  margin: 2em 0 .5em; /* Titles should be close to the text they describe */
+  font-size: 2em;
 }
 h2 {
-    margin: 2em 0 .5em; /* Titles should be close to the text they describe */
-    font-size: 1.5em;}
+  margin: 2em 0 .5em; /* Titles should be close to the text they describe */
+  font-size: 1.5em;
+  text-align: center;
+}
 h3 {
     margin: 3em 0 .5em; /* Titles should be close to the text they describe */
     font-size: 1.2em;}

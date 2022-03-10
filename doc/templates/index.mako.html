@@ -21,11 +21,14 @@
 
 % for data in figures:
 <div class="${data}">
+    <h2>${figures[data]['title']}</h2>
     <%
         fig = figures[data]['fig_fname']
     %>
     % if fig.endswith('.svg'):
+    <center>
       <img src="${fig}"><br/>
+    </center>
     % else:
       ${fig}
     %endif

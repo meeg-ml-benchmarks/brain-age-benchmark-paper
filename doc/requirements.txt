@@ -2,3 +2,4 @@ mako
 plotly
 matplotlib
 pandas
+seaborn

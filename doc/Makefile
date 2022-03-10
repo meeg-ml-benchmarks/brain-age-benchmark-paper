@@ -1,7 +1,7 @@
 PYTHON?=python
 
 BASEDIR=$(CURDIR)
-OUTPUTDIR=$(BASEDIR)/rendered
+OUTPUTDIR=$(BASEDIR)/build
 
 GITHUB_PAGES_BRANCH=gh-pages
 
@@ -14,8 +14,8 @@ clean:
 
 render:
 	python main.py
+	touch $(OUTPUTDIR)/.nojekyll
 
 publish:
-	touch $(OUTPUTDIR)/.nojekyll
 	ghp-import -m "Generate site" -b $(GITHUB_PAGES_BRANCH) $(OUTPUTDIR)
 	git push origin $(GITHUB_PAGES_BRANCH)

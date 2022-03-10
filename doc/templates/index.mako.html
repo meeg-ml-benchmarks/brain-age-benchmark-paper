@@ -21,6 +21,7 @@
 
 % for data in figures:
 <div class="${data}">
+    <hr>
     <h2>${figures[data]['title']}</h2>
     <%
         fig = figures[data]['fig_fname']
@@ -32,6 +33,9 @@
     % else:
       ${fig}
     %endif
+
+    <h3>Configuration file:</h3>
+    ${figures[data]['config_html']}
 </div>
 %endfor
 

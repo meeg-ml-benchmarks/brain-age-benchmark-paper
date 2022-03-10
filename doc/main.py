@@ -7,6 +7,9 @@ from mako.template import Template
 import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sns
+from pygments import highlight
+from pygments.lexers import PythonLexer
+from pygments.formatters import HtmlFormatter
 
 import pandas as pd
 
@@ -67,6 +70,10 @@ def generate_plots(df):
             fig, f"{fname_short}"
         )
         figures[data_name]["title"] = data_name
+        config_fname = glob.glob(str(ROOT / ".." / f"*{data_name}*.py"))[0]
+        code = open(config_fname).read()
+        figures[data_name]["config_html"] = \
+            highlight(code, PythonLexer(), HtmlFormatter(full=True))
     return figures
 
 

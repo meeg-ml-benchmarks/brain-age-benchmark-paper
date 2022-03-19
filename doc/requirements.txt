@@ -1,0 +1,6 @@
+mako
+plotly
+matplotlib
+pandas
+seaborn
+Pygments

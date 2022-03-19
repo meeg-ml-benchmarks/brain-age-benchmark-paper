@@ -50,7 +50,8 @@ The four config files for the datasets are:
 
 Once all data is downloaded and the configs are updated, the MNE-BIDS pipeline can be used for preprocessing. We recommend downloading the MNE-BIDS-pipeline repository and placing it in the same folder this repository is downloaded, such that its relative position would be ```../mne-bids-pipeline```. For help with the installation dependencies, please consider the dedicated section below.
 
-*Note:* the BIDS pipeline is a bit different from other packages. Instead of installing it as a library it is more like a collection of scripts. Installing it means cloning the GitHub repository and making sure the dependencies are met.
+*Note:* the MNE-BIDS pipeline is a bit different from other packages. Instead of installing it as a library it is more like a collection of scripts. Installing it means getting the Python files and making sure the dependencies are met. See
+[installation instructions](https://mne.tools/mne-bids-pipeline/getting_started/install.html).
 
 If all is good to go, preprocessing can be conducted using the following shell commands:
 
@@ -223,4 +224,4 @@ The development initiated by this work has been stabilized and released in the l
 
 6. [Braindecode](https://github.com/braindecode/braindecode)
 
-The MNE-BIDS repository is not a package in the classical sense. We recommend using the latest version from GitHub. Please consider the installation instructions: https://mne.tools/mne-bids-pipeline/getting_started/install.html
+The MNE-BIDS pipeline repository is not a package in the classical sense. We recommend using the latest version from GitHub. Please consider the [installation instructions](https://mne.tools/mne-bids-pipeline/getting_started/install.html).

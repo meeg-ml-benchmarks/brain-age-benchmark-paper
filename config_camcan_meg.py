@@ -21,7 +21,8 @@ sessions = ['rest']  # keep empty for code flow
 data_type = 'meg'
 ch_types = ['meg']
 
-analyze_channels = ['MEG0111', 'MEG0121', 'MEG0131', 'MEG0141', 'MEG0211',
+analyze_channels = [
+    'MEG0111', 'MEG0121', 'MEG0131', 'MEG0141', 'MEG0211',
     'MEG0221', 'MEG0231', 'MEG0241', 'MEG0311', 'MEG0321', 'MEG0331',
     'MEG0341', 'MEG0411', 'MEG0421', 'MEG0431', 'MEG0441', 'MEG0511',
     'MEG0521', 'MEG0531', 'MEG0541', 'MEG0611', 'MEG0621', 'MEG0631',
@@ -38,7 +39,8 @@ analyze_channels = ['MEG0111', 'MEG0121', 'MEG0131', 'MEG0141', 'MEG0211',
     'MEG2221', 'MEG2231', 'MEG2241', 'MEG2311', 'MEG2321', 'MEG2331',
     'MEG2341', 'MEG2411', 'MEG2421', 'MEG2431', 'MEG2441', 'MEG2511',
     'MEG2521', 'MEG2531', 'MEG2541', 'MEG2611', 'MEG2621', 'MEG2631',
-    'MEG2641']
+    'MEG2641'
+]
 
 l_freq = 0.1
 h_freq = 49
@@ -57,7 +59,7 @@ on_rename_missing_events = "warn"
 
 N_JOBS = 30
 
-decim = 5 # Cam-CAN has 1000 Hz; Cuban Human Brain Project 200Hz
+decim = 5  # Cam-CAN has 1000 Hz; Cuban Human Brain Project 200Hz
 
 mf_st_duration = 10.
 
@@ -93,3 +95,6 @@ mne_log_level = "error"
 
 # on_error = 'continue'
 on_error = "continue"
+
+N_JOBS = 1
+subjects = ['CC110033']

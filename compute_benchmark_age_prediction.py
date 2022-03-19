@@ -4,6 +4,7 @@ import importlib
 from logging import warning
 
 import mne
+import h5io
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import RidgeCV
@@ -21,8 +22,9 @@ from deep_learning_utils import (
 
 
 DATASETS = ['chbp', 'lemon', 'tuab', 'camcan']
-BENCHMARKS = ['dummy', 'filterbank-riemann', 'filterbank-source', 'handcrafted',
-              'shallow', 'deep']
+BENCHMARKS = ['dummy', 'filterbank-riemann', 'filterbank-source',
+              'handcrafted', 'shallow', 'deep']
+
 parser = argparse.ArgumentParser(description='Compute features.')
 parser.add_argument(
     '-d', '--dataset',
@@ -88,9 +90,11 @@ bench_config = {  # put other benchmark related config here
 
 # %% get age
 
+
 def aggregate_features(X, func='mean', axis=0):
     aggs = {'mean': np.nanmean, 'median': np.nanmedian}
     return np.vstack([aggs[func](x, axis=axis, keepdims=True) for x in X])
+
 
 def load_benchmark_data(dataset, benchmark, condition=None):
     """Load the input features and outcome vectors for a given benchmark
@@ -124,7 +128,6 @@ def load_benchmark_data(dataset, benchmark, condition=None):
     cfg = importlib.import_module(config_map[dataset])
     bids_root = cfg.bids_root
     deriv_root = cfg.deriv_root
-    task = cfg.task
     analyze_channels = cfg.analyze_channels
 
     # handle default for condition.
@@ -153,7 +156,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
 
     if benchmark == 'filterbank-riemann':
         frequency_bands = bench_cfg['frequency_bands']
-        features = mne.externals.h5io.read_hdf5(
+        features = h5io.read_hdf5(
             deriv_root / f'features_{feature_label}_{condition_}.h5')
         covs = [features[sub]['covs'] for sub in df_subjects.index]
         covs = np.array(covs)
@@ -252,6 +255,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
 
 # %% Run CV
 
+
 def run_benchmark_cv(benchmark, dataset):
     X, y, model = load_benchmark_data(dataset=dataset, benchmark=benchmark)
     if X is None:
@@ -260,7 +264,14 @@ def run_benchmark_cv(benchmark, dataset):
             f"'{benchmark}' on dataset '{dataset}'")
         return
 
-    metrics = [mean_absolute_error, r2_score]
+    ys_true, ys_pred = [], []
+
+    def mean_absolute_error_with_memory(y_true, y_pred):
+        ys_true.append(y_true)
+        ys_pred.append(y_pred)
+        return mean_absolute_error(y_true, y_pred)
+
+    metrics = [mean_absolute_error_with_memory, r2_score]
     cv_params = dict(n_splits=10, shuffle=True, random_state=42)
 
     if benchmark in ['shallow', 'deep']:
@@ -269,8 +280,8 @@ def run_benchmark_cv(benchmark, dataset):
         # as well as might slow down code execution
         mne.set_log_level('ERROR')
         # do not run cv in parallel. we assume to only have 1 GPU
-        # instead use n_jobs to (lazily) load data in parallel such that the GPU
-        # does not have to wait
+        # instead use n_jobs to (lazily) load data in parallel such that the
+        # GPU does not have to wait
         if N_JOBS > 1:
             warning('When running deep learning benchmarks joblib can only be '
                     'used to load the data, as cross-validation with n_jobs '
@@ -289,8 +300,12 @@ def run_benchmark_cv(benchmark, dataset):
                 else N_JOBS))  # XXX too big for joblib
     print("... done.")
 
+    ys_true = np.concatenate(ys_true)
+    ys_pred = np.concatenate(ys_pred)
+    ys = pd.DataFrame(dict(y_true=ys_true, y_pred=ys_pred))
+
     results = pd.DataFrame(
-        {'MAE': scores['test_mean_absolute_error'],
+        {'MAE': scores['test_mean_absolute_error_with_memory'],
          'r2': scores['test_r2_score'],
          'fit_time': scores['fit_time'],
          'score_time': scores['score_time'],
@@ -299,13 +314,15 @@ def run_benchmark_cv(benchmark, dataset):
     )
     for metric in ('MAE', 'r2'):
         print(f'{metric}({benchmark}, {dataset}) = {results[metric].mean()}')
-    return results
+    return results, ys
 
 
-#%% run benchmarks
+# %% run benchmarks
 for dataset, benchmark in tasks:
     print(f"Now running '{benchmark}' on '{dataset}' data")
-    results_df = run_benchmark_cv(benchmark, dataset)
+    results_df, ys = run_benchmark_cv(benchmark, dataset)
     if results_df is not None:
         results_df.to_csv(
             f"./results/benchmark-{benchmark}_dataset-{dataset}.csv")
+        ys.to_csv(
+            f"./results/benchmark-{benchmark}_dataset-{dataset}_ys.csv")

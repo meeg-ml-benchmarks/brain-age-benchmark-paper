@@ -3,7 +3,7 @@
 This is repository presents the code, the tools and resources developed in the course of [1]. To reuse the code, please follow the instructions and recommendations below.
 
 [1] D. Engemann, A. Mellot, R. Höchenberger, H. Banville, D. Sabbagh, L. Gemein, T. Ball, and A. Gramfort.
-(in preparation). 
+(in preparation).
 
 ---
 
@@ -19,7 +19,7 @@ All plots and tables were generated using ```plot_benchmark_age_prediction.r```.
 
 The R code is using few dependencies and base-r idioms supporting newer as well as older versions of R.
 
-If needed, dendencies can be installed as follows:
+If needed, dependencies can be installed as follows:
 
 ```R
 install.packages(c("ggplot2", "scales", "ggThemes", "patchwork", "kableExtra"))
@@ -29,8 +29,7 @@ The demographic data can be plotted using ```plot_demography.r```. Note however 
 
 ---
 
-General worklfow for computing intermediate outputs
----------------------------------------------------
+## General workflow for computing intermediate outputs
 
 Here we considered 4 datasets that can be programmatically downloaded from their respective websites linked below:
 
@@ -41,7 +40,7 @@ Here we considered 4 datasets that can be programmatically downloaded from their
 
 Some of these datasets already come in BIDS formats, others have to be actively converted. In other cases some modifications and fixes are needed to make things work. Please consider the notes on dataset-specific peculiarities.
 
-Datsets are then preprocessed using the MNE-BIDS pipeline. To make this work, you must edit the respective config files
+Datasets are then preprocessed using the [MNE-BIDS pipeline](https://mne.tools/mne-bids-pipeline/). To make this work, you must edit the respective config files
 to point to the input and derivative folders on your machine. The respective variables to modify in each config file are ```bids_root``` (input data path), ```deriv_root``` (intermediate BIDS outpouts) and ```subjects_dir``` (freesurfer path).
 
 The four config files for the datasets are:
@@ -51,9 +50,10 @@ The four config files for the datasets are:
 3. ```config_chbp_eeg.py```
 4. ```config_tuab_eeg.py```
 
-Once all data is downloaded and the configs are updated, the MNE-BIDS pipeline can be used for preprocessing. We recommend downloading the MNE-BIDS-pipeline repository and placing it in the same folder this repository is downloaded, sucht that its releative position would be ```../mne-bids-pipeline```. For help with the installation dependencies, please consider the dedicated section below. 
+Once all data is downloaded and the configs are updated, the MNE-BIDS pipeline can be used for preprocessing. We recommend downloading the MNE-BIDS-pipeline repository and placing it in the same folder this repository is downloaded, such that its relative position would be ```../mne-bids-pipeline```. For help with the installation dependencies, please consider the dedicated section below.
 
-*Note:* the bids pipeline is a bit different from other packages. Instead of installing it as a library it is more like a collection of scripts. Installing it means cloning the GitHub repository and making sure the dependencies are met.
+*Note:* the MNE-BIDS pipeline is a bit different from other packages. Instead of installing it as a library it is more like a collection of scripts. Installing it means getting the Python files and making sure the dependencies are met. See
+[installation instructions](https://mne.tools/mne-bids-pipeline/getting_started/install.html).
 
 If all is good to go, preprocessing can be conducted using the following shell commands.
 
@@ -64,9 +64,9 @@ python ../mne-bids-pipeline/run.py --config config_chbp_eeg.py --n_jobs 40 --ste
 python ../mne-bids-pipeline/run.py --config config_tuab_eeg.py --n_jobs 40 --steps=preprocessing
 ```
 
-*Note:* Make sure chose an appropriate number of jobs given your computer.
+*Note:* Make sure you chose an appropriate number of jobs given your computer. The more jobs you use the more memory you will need to run the computations.
 
-*Note:* It can be convenient to run these commans from within IPython e.g. to benefit from a nicer Terminal experience during debugging. Start IPython and use ```run``` instead of ```python```
+*Note:* It can be convenient to run these commands from within IPython e.g. to benefit from a nicer Terminal experience during debugging. Start IPython and use ```%run``` instead of ```python```.
 
 This will apply filtering and epoching according to the settings in the config files.
 
@@ -87,7 +87,7 @@ python ../mne-bids-pipeline/run.py --config config_chbp_eeg.py --n_jobs 40 --ste
 python ../mne-bids-pipeline/run.py --config config_tuab_eeg.py --n_jobs 40 --steps=source
 ```
 
-Potential errors can be inpsected in the ```autoreject_log.csv``` that is written in the dataset-specific derivative directories.
+Potential errors can be inspected in the ```autoreject_log.csv``` that is written in the dataset-specific derivative directories.
 
 Now feature computation can be launched for the 3 non-deep learning benchmarks:
 
@@ -98,9 +98,10 @@ Now feature computation can be launched for the 3 non-deep learning benchmarks:
 ```bash
 python compute_features.py --n_jobs 40
 ```
+
 *Note:* This will run computation for all datasets and all benchmarks. To visit specific datasets or feature types, checkout the `-d` and `-f` arguments.
 
-Potential errors can be inpsected in the benchmark-specific logfiles that is written in the dataset-specific derivative directories, e.g. ```feature_fb_covs_pooled-log.csv``` for the filterbank features.
+Potential errors can be inspected in the benchmark-specific logfiles that is written in the dataset-specific derivative directories, e.g. ```feature_fb_covs_pooled-log.csv``` for the filterbank features.
 
 If all went fine until now, the machine learning benchmarks:
 
@@ -120,8 +121,8 @@ python compute_benchmark_age_prediction.py --n_jobs 10
 If all worked until now out you should find the fold-wise scores for every benchmark on every dataset in ```./results``` 
 
 ---
-Handling datset-specific peculiarities prior to computation
------------------------------------------------------------
+
+## Handling dataset-specific peculiarities prior to computation
 
 For some of the datasets, custom processing of the input data was necessary.
 
@@ -192,7 +193,7 @@ Further steps were needed to satisfy the needs make the CHBP data work using the
 
 The effort is summarized in ```convert_chbp_to_bids.py```
 
-Note that future version of the dataset may require modifiactions to this approach or render some of these measures unncessary.
+Note that future version of the dataset may require modifications to this approach or render some of these measures unnecessary.
 
 The current work is based on the dataset as it was available in July 2021.
 
@@ -202,13 +203,13 @@ We found a bug in the participants.tsv file, leading to issues with the BIDS val
 In the input data (July 2021), one can find a trailing whitespace until line 251. Then the line terminates at the last character of the “sex” column (F/M). We removed the whitespaces
 to ensure proper file-parsing.
 
-Note that future version of the dataset may require modifiactions to this approach or render some of these measures unncessary.
+Note that future version of the dataset may require modifications to this approach or render some of these measures unnecessary.
 
 #### TUAB
 
 ##### BIDS conversion
 
-After downlaodgin the TUAB data, we first needed create a BIDS datasset.
+After downloading the TUAB data, we first needed create a BIDS dataset.
 The effort is summarized in ```convert_tuh_to_bids.py```
 
 ---
@@ -225,4 +226,4 @@ The development initiated by this work has been stabilized and released in the l
 
 4. [Braindecode](https://github.com/braindecode/braindecode)
 
-The MNE-BIDS repository is not a package in the classical sense. We recommend using the latest version from GitHub. Please consider the installation instructions: https://mne.tools/mne-bids-pipeline/getting_started/install.html
+The MNE-BIDS pipeline repository is not a package in the classical sense. We recommend using the latest version from GitHub. Please consider the [installation instructions](https://mne.tools/mne-bids-pipeline/getting_started/install.html).

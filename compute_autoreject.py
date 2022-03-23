@@ -60,8 +60,9 @@ def run_subject(subject, cfg):
             {ch: ch.rstrip('-REF') for ch in epochs.ch_names})
 
     # XXX Seems to be necessary for TUAB - figure out why
-    montage = mne.channels.make_standard_montage('standard_1005')
-    epochs.set_montage(montage)
+    if 'eeg' in epochs:
+        montage = mne.channels.make_standard_montage('standard_1005')
+        epochs.set_montage(montage)
 
     if analyze_channels:
         epochs.pick_channels(analyze_channels)
@@ -72,7 +73,8 @@ def run_subject(subject, cfg):
     # particularly important as TUAB needs to be re-referenced
     # but on the other hand we want benchmarks to be comparable, hence,
     # re-reference all
-    epochs.set_eeg_reference('average', projection=True).apply_proj()
+    if 'eeg' in epochs:
+        epochs.set_eeg_reference('average', projection=True).apply_proj()
     bp_out = bp.copy().update(
         processing="autoreject",
         extension='.fif'

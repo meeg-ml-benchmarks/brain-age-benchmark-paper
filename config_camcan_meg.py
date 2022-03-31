@@ -78,7 +78,8 @@ find_flat_channels_meg = True
 find_noisy_channels_meg = True
 use_maxwell_filter = True
 run_source_estimation = True
-use_template_mri = True
+use_template_mri = "fsaverage_small"
+adjust_coreg = True
 
 event_repeated = "drop"
 l_trans_bandwidth = "auto"

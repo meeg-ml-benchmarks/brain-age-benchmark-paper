@@ -10,6 +10,7 @@ from mne_bids import BIDSPath
 import coffeine
 from mne_features.feature_extraction import extract_features
 from mne.minimum_norm import apply_inverse_cov
+import h5io
 
 from utils import prepare_dataset
 
@@ -108,9 +109,9 @@ def extract_source_power(bp, info, subject, subjects_dir, covs):
                                  extension='.fif')
     inv = mne.minimum_norm.read_inverse_operator(fname_inv)
     # Prepare label time series
-    labels = mne.read_labels_from_annot('fsaverage', 'aparc_sub',
-                                        subjects_dir=subjects_dir)
-
+    labels = mne.read_labels_from_annot(
+        'fsaverage_small' if dataset == 'camcan' else 'fsaverage',
+        'aparc_sub', subjects_dir=subjects_dir)
     labels = [ll for ll in labels if 'unknown' not in ll.name]
 
     # for each frequency band
@@ -171,6 +172,7 @@ def run_subject(subject, cfg, condition):
         else:
             NotImplementedError()
     except Exception as err:
+        raise err
         return repr(err)
 
     return out
@@ -208,7 +210,7 @@ for dataset, feature_type in tasks:
         log_out_fname = (
             cfg.deriv_root / f'feature_{feature_type}_{label}-log.csv')
 
-        mne.externals.h5io.write_hdf5(
+        h5io.write_hdf5(
             out_fname,
             out,
             overwrite=True

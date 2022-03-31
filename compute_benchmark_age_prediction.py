@@ -177,7 +177,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
 
     elif benchmark == 'filterbank-source':
         frequency_bands = bench_cfg['frequency_bands']
-        features = mne.externals.h5io.read_hdf5(
+        features = h5io.read_hdf5(
             deriv_root / f'features_{feature_label}_{condition_}.h5')
         source_power = [features[sub] for sub in df_subjects.index]
         source_power = np.array(source_power)
@@ -194,7 +194,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
             RidgeCV(alphas=np.logspace(-5, 10, 100)))
 
     elif benchmark == 'handcrafted':
-        features = mne.externals.h5io.read_hdf5(
+        features = h5io.read_hdf5(
             deriv_root / f'features_handcrafted_{condition_}.h5')
         X = [features[sub]['feats'] for sub in df_subjects.index]
         y = df_subjects.age.values

@@ -97,4 +97,4 @@ mne_log_level = "error"
 on_error = "continue"
 
 N_JOBS = 40
-# subjects = ['CC110033']
+subjects = ['CC110033']

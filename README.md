@@ -39,7 +39,15 @@ Here we considered 4 datasets that can be programmatically downloaded from their
 
 Some of these datasets already come in BIDS formats, others have to be actively converted. In other cases some modifications and fixes are needed to make things work. Please consider the notes on dataset-specific peculiarities below.
 
-Datasets are then preprocessed using the [MNE-BIDS pipeline](https://mne.tools/mne-bids-pipeline/). To make this work, you must edit the respective config files to point to the input and derivative folders on your machine. The respective variables to modify in each config file are ```bids_root``` (input data path), ```deriv_root``` (intermediate BIDS outpouts) and ```subjects_dir``` (freesurfer path).
+Datasets are then preprocessed using the [MNE-BIDS pipeline](https://mne.tools/mne-bids-pipeline/). To make this work, you must edit the respective config files to point to the input and derivative folders on your machine. The respective variables to modify in each config file are ```bids_root``` (input data path), ```deriv_root``` (intermediate BIDS outpouts) and ```subjects_dir``` (FreeSurfer path).
+
+*Note:* The filterbank source model requires on the Cam-Can dataset a reduced size template head model.
+After setting your FreeSurfer `subjects_dir` you can obtain the scaled MRI called `fsaverage_small`
+using:
+
+```python
+mne.coreg.scale_mri("fsaverage", "fsaverage_small", scale=0.9, subjects_dir=subjects_dir, annot=True, overwrite=True)
+```
 
 The four config files for the datasets are:
 

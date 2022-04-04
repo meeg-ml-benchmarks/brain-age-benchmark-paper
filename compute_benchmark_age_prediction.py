@@ -15,6 +15,7 @@ from sklearn.preprocessing import StandardScaler, FunctionTransformer
 from sklearn.model_selection import KFold, GridSearchCV, cross_validate
 from sklearn.metrics import make_scorer, r2_score, mean_absolute_error
 import coffeine
+from copy import deepcopy
 
 from deep_learning_utils import (
     create_dataset_target_model, get_fif_paths, BraindecodeKFold,
@@ -293,6 +294,8 @@ def run_benchmark_cv(benchmark, dataset):
         cv = KFold(**cv_params)
         scoring = {m.__name__: make_scorer(m) for m in metrics}
 
+    cv_ = deepcopy(cv)
+
     print("Running cross validation ...")
     scores = cross_validate(
         model, X, y, cv=cv, scoring=scoring,
@@ -302,7 +305,14 @@ def run_benchmark_cv(benchmark, dataset):
 
     ys_true = np.concatenate(ys_true)
     ys_pred = np.concatenate(ys_pred)
+
+    cv_splits = np.concatenate(
+        [np.c_[[ii] * len(test), test] for ii, (train, test) in
+         enumerate(cv_.split(X, y))])
+
     ys = pd.DataFrame(dict(y_true=ys_true, y_pred=ys_pred))
+    ys['cv_split'] = 0
+    ys.loc[cv_splits[:, 1], 'cv_split'] = cv_splits[:, 0].astype(int)
 
     results = pd.DataFrame(
         {'MAE': scores['test_mean_absolute_error_with_memory'],

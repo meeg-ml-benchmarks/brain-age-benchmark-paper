@@ -30,22 +30,26 @@ class BraindecodeKFold(KFold):
         super().__init__(n_splits=n_splits, shuffle=shuffle,
                          random_state=random_state)
 
-    def split(self, X, y=None, groups=None):
+    def split(self, X, y=None, groups=None, return_win_inds=True):
         assert isinstance(X.dataset, BaseConcatDataset)
         assert isinstance(y.dataset, BaseConcatDataset)
         # split recordings instead of windows
         split = super().split(
             X=X.dataset.datasets, y=y.dataset.datasets, groups=groups)
-        rec = X.dataset.get_metadata()['rec']
+        rec = X.dataset.get_metadata()[['rec']]
+        rec['ind'] = rec.groupby('rec').ngroup()
         # the index of DataFrame rec now corresponds to the id of windows
         rec.reset_index(inplace=True, drop=True)
         for train_i, valid_i in split:
-            # map recording ids to window ids
-            train_window_i = rec[rec.isin(train_i)].index.to_list()
-            valid_window_i = rec[rec.isin(valid_i)].index.to_list()
-            if set(train_window_i) & set(valid_window_i):
-                raise RuntimeError('train and valid set overlap')
-            yield train_window_i, valid_window_i
+            if return_win_inds:
+                # map recording ids to window ids
+                train_window_i = rec[rec['ind'].isin(train_i)].index.to_list()
+                valid_window_i = rec[rec['ind'].isin(valid_i)].index.to_list()
+                if set(train_window_i) & set(valid_window_i):
+                    raise RuntimeError('train and valid set overlap')
+                yield train_window_i, valid_window_i
+            else:
+                yield train_i, valid_i
 
 
 def predict_recordings(estimator, X, y):

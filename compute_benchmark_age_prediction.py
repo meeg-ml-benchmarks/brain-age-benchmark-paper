@@ -252,13 +252,13 @@ def load_benchmark_data(dataset, benchmark, condition=None):
             seed=seed,
             scaling_factor=scaling_factor,
         )
-    return X, y, model
+    return X, y, model, df_subjects
 
 # %% Run CV
 
 
 def run_benchmark_cv(benchmark, dataset):
-    X, y, model = load_benchmark_data(dataset=dataset, benchmark=benchmark)
+    X, y, model, df_subjects = load_benchmark_data(dataset=dataset, benchmark=benchmark)
     if X is None:
         print(
             "no data found for benchmark "
@@ -313,6 +313,7 @@ def run_benchmark_cv(benchmark, dataset):
     ys = pd.DataFrame(dict(y_true=ys_true, y_pred=ys_pred))
     ys['cv_split'] = 0
     ys.loc[cv_splits[:, 1], 'cv_split'] = cv_splits[:, 0].astype(int)
+    ys['subject'] = df_subjects.index
 
     results = pd.DataFrame(
         {'MAE': scores['test_mean_absolute_error_with_memory'],

@@ -30,7 +30,38 @@ class BraindecodeKFold(KFold):
         super().__init__(n_splits=n_splits, shuffle=shuffle,
                          random_state=random_state)
 
-    def split(self, X, y=None, groups=None, return_win_inds=True):
+    def split(self, X, y=None, groups=None, yield_win_inds=True):
+        """Generate indices to split data into training and test set.
+
+        The split is done over the different datasets (i.e., recordings) in the
+        provided SliceDataset(s), however by default the method yields indices
+        to the windows of each of those datasets. To instead yield indices to
+        the datasets, set `yield_win_inds` to False.
+
+        Parameters
+        ----------
+        X : skorch.helper.SliceDataset
+            Data to split. `X.dataset` must be a
+            `braindecode.datasets.BaseConcatDataset`.
+        y : skorch.helper.SliceDataset | None
+            The targets to split.
+        groups : array-like of shape (n_samples,) | None
+            Group labels for the samples used while splitting the dataset into
+            train/test set.
+        yield_win_inds : bool
+            If True, yield indices to the windows of each recording. If False,
+            instead yield indices to the datasets (i.e., recordings). This can
+            be used to obtain a list of recordings used in each fold, which can
+            be compared to per-recording KFold (e.g., as is done with non-DL
+            benchmarks).
+
+        Yields
+        ------
+        train : ndarray
+            The training set indices for that split.
+        test : ndarray
+            The testing set indices for that split.
+        """
         assert isinstance(X.dataset, BaseConcatDataset)
         assert isinstance(y.dataset, BaseConcatDataset)
         # split recordings instead of windows
@@ -41,7 +72,7 @@ class BraindecodeKFold(KFold):
         # the index of DataFrame rec now corresponds to the id of windows
         rec.reset_index(inplace=True, drop=True)
         for train_i, valid_i in split:
-            if return_win_inds:
+            if yield_win_inds:
                 # map recording ids to window ids
                 train_window_i = rec[rec['ind'].isin(train_i)].index.to_list()
                 valid_window_i = rec[rec['ind'].isin(valid_i)].index.to_list()

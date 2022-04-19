@@ -141,8 +141,10 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         condition_ = condition
     df_subjects = pd.read_csv(bids_root / "participants.tsv", sep='\t')
     df_subjects = df_subjects.set_index('participant_id')
-    # now we read in the processing log to see for which participants we have EEG
+    df_subjects = df_subjects.sort_index()  # Sort rows by participant_id so
+    # that the cross-validation folds are the same across benchmarks.
 
+    # Read the processing logs to see for which participants we have EEG
     X, y, model = None, None, None
     if benchmark not in ['dummy', 'shallow', 'deep']:
         bench_cfg = bench_config[benchmark]
@@ -290,9 +292,11 @@ def run_benchmark_cv(benchmark, dataset):
 
         cv = BraindecodeKFold(**cv_params)
         scoring = {m.__name__: make_braindecode_scorer(m) for m in metrics}
+        cv_out_params = {'yield_win_inds': False}
     else:
         cv = KFold(**cv_params)
         scoring = {m.__name__: make_scorer(m) for m in metrics}
+        cv_out_params = dict()
 
     cv_ = deepcopy(cv)
 
@@ -308,7 +312,7 @@ def run_benchmark_cv(benchmark, dataset):
 
     cv_splits = np.concatenate(
         [np.c_[[ii] * len(test), test] for ii, (train, test) in
-         enumerate(cv_.split(X, y))])
+         enumerate(cv_.split(X, y, **cv_out_params))])
 
     ys = pd.DataFrame(dict(y_true=ys_true, y_pred=ys_pred))
     ys['cv_split'] = 0

@@ -8,7 +8,7 @@ source('utils.r')
 # fig 1
 
 results_fnames <- list.files('results/', full.names = T)
-
+results_fnames <- results_fnames[!grepl('ys.csv', results_fnames, fixed = T)]
 results <- do.call(rbind, lapply(results_fnames, read.csv))
 results$X <- NULL
 

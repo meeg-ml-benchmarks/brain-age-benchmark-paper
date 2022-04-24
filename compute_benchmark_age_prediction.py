@@ -1,6 +1,7 @@
 # %% imports
 import argparse
 import importlib
+from copy import deepcopy
 from logging import warning
 
 import mne
@@ -15,7 +16,6 @@ from sklearn.preprocessing import StandardScaler, FunctionTransformer
 from sklearn.model_selection import KFold, GridSearchCV, cross_validate
 from sklearn.metrics import make_scorer, r2_score, mean_absolute_error
 import coffeine
-from copy import deepcopy
 
 from deep_learning_utils import (
     create_dataset_target_model, get_fif_paths, BraindecodeKFold,
@@ -243,7 +243,7 @@ def load_benchmark_data(dataset, benchmark, condition=None):
         }
         scaling_factor = scaling_factor / dataset_stds[dataset]
 
-        X, y, model = create_dataset_target_model(
+        X, y, model, valid_fnames = create_dataset_target_model(
             fnames=df_subjects['fname'].values,
             ages=ages,
             model_name=model_name,
@@ -254,6 +254,11 @@ def load_benchmark_data(dataset, benchmark, condition=None):
             seed=seed,
             scaling_factor=scaling_factor,
         )
+
+        # Update dataframe of subjects with valid file names
+        df_subjects = df_subjects[df_subjects['fname'].isin(
+            valid_fnames)].set_index('participant_id')
+
     return X, y, model, df_subjects
 
 # %% Run CV

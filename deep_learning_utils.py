@@ -253,6 +253,8 @@ def create_dataset(
     -------
     braindecode.datasets.BaseConcatDataset
         A braindecode dataset.
+    list
+        Updated list of fnames containing only the names of valid files.
     """
     if debug:
         fnames, ages = fnames[:10], ages[:10]
@@ -282,10 +284,14 @@ def create_dataset(
             datasets.append(ds)
 
     # Remove None from datasets list (missing files)
-    datasets = [d for d in datasets if d is not None]
-    print(f'Loaded {len(datasets)} out of {len(fnames)} files.')
+    valid_fnames, valid_datasets = list(), list()
+    for f, d in zip(fnames, datasets):
+        if d is not None:
+            valid_fnames.append(f)
+            valid_datasets.append(d)
+    print(f'Loaded {len(valid_fnames)} out of {len(fnames)} files.')
 
-    return BaseConcatDataset(datasets)
+    return BaseConcatDataset(valid_datasets), valid_fnames
 
 
 def squeeze_to_ch_x_classes(x):
@@ -499,7 +505,7 @@ def create_dataset_target_model(
     estimator: sklearn.compose.TransformedTargetRegressor
         An estimator holding a regressor and a target transformer.
     """
-    ds = create_dataset(
+    ds, valid_fnames = create_dataset(
         fnames=fnames,
         ages=ages,
         preload=True,  # Set to True to avoid OSError: Too many files opened.
@@ -538,7 +544,8 @@ def create_dataset_target_model(
     X = SliceDataset(ds, idx=0, indices=None)
     # and y
     y = SliceDataset(ds, idx=1, indices=None)
-    return X, y, estimator
+
+    return X, y, estimator, valid_fnames
 
 
 def get_fif_paths(dataset, cfg):

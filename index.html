@@ -337,31 +337,106 @@ body .il { color: #666666 } /* Literal.Number.Integer.Long */
 <body>
 <h2></h2>
 
-<div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">os</span>
-<span class="kn">import</span> <span class="nn">pathlib</span>
-<span class="kn">import</span> <span class="nn">config_chbp_eeg</span> <span class="k">as</span> <span class="nn">cfg</span>
-<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">pathlib</span>
+<span class="kn">import</span> <span class="nn">mne</span>
 
-<span class="sd">&quot;&quot;&quot;Fixing the participants.tsv in the derivatives folder</span>
+<span class="n">study_name</span> <span class="o">=</span> <span class="s2">&quot;age-prediction-benchmark&quot;</span>
 
-<span class="sd">The current release of the CHBP has a faulty participants.tsv</span>
-<span class="sd">that doesn&#39;t include age. This script carries over the info</span>
-<span class="sd">from the demographics directory shipped by the CHBP and writes a</span>
-<span class="sd">new &#39;particpants.tsv&#39; to the root path.</span>
-<span class="sd">&quot;&quot;&quot;</span>
+<span class="n">bids_root</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span>
+    <span class="s2">&quot;/storage/store3/data/CHBMP_EEG_and_MRI/ds_bids_chbmp&quot;</span><span class="p">)</span>
 
-<span class="n">demographics_root</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span>
-    <span class="s1">&#39;/storage/store3/data/CHBMP_Cognitive_Scales&#39;</span><span class="p">)</span>
+<span class="n">deriv_root</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/storage/store3/derivatives/CHBMP_EEG_and_MRI/&quot;</span><span class="p">)</span>
+<span class="c1"># &quot;/storage/store2/derivatives/eeg-pred-modeling-summer-school/&quot;)</span>
 
-<span class="n">subjects_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span>
-    <span class="n">demographics_root</span> <span class="o">/</span> <span class="s1">&#39;Demographic_data.csv&#39;</span><span class="p">,</span> <span class="n">skiprows</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">subjects_dir</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="s1">&#39;/storage/store/data/camcan-mne/freesurfer&#39;</span><span class="p">)</span>
 
-<span class="n">subjects_df</span> <span class="o">=</span> <span class="n">subjects_df</span><span class="o">.</span><span class="n">iloc</span><span class="p">[:,</span> <span class="p">:</span><span class="mi">3</span><span class="p">]</span>
-<span class="n">subjects_df</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;participant_id&#39;</span><span class="p">,</span> <span class="s1">&#39;sex&#39;</span><span class="p">,</span> <span class="s1">&#39;age&#39;</span><span class="p">]</span>
-<span class="n">subjects_df</span><span class="p">[</span><span class="s1">&#39;participant_id&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;sub-&#39;</span> <span class="o">+</span> <span class="n">subjects_df</span><span class="o">.</span><span class="n">participant_id</span>
-<span class="n">subjects_df</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span>
-    <span class="n">cfg</span><span class="o">.</span><span class="n">bids_root</span> <span class="o">/</span> <span class="s1">&#39;participants.tsv&#39;</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s1">&#39;</span><span class="se">\t</span><span class="s1">&#39;</span><span class="p">,</span>
-    <span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="n">source_info_path_update</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;processing&#39;</span><span class="p">:</span> <span class="s1">&#39;autoreject&#39;</span><span class="p">,</span>
+                           <span class="s1">&#39;suffix&#39;</span><span class="p">:</span> <span class="s1">&#39;epo&#39;</span><span class="p">}</span>
+
+<span class="n">inverse_targets</span> <span class="o">=</span> <span class="p">[]</span>
+
+<span class="n">noise_cov</span> <span class="o">=</span> <span class="s1">&#39;ad-hoc&#39;</span>
+
+<span class="n">task</span> <span class="o">=</span> <span class="s2">&quot;protmap&quot;</span>
+
+<span class="n">sessions</span> <span class="o">=</span> <span class="p">[]</span>  <span class="c1"># keep empty for code flow</span>
+<span class="n">data_type</span> <span class="o">=</span> <span class="s2">&quot;eeg&quot;</span>
+<span class="n">ch_types</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;eeg&quot;</span><span class="p">]</span>
+
+<span class="n">analyze_channels</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;AF3&quot;</span><span class="p">,</span> <span class="s2">&quot;AF4&quot;</span><span class="p">,</span> <span class="s2">&quot;C1&quot;</span><span class="p">,</span> <span class="s2">&quot;C2&quot;</span><span class="p">,</span> <span class="s2">&quot;C3&quot;</span><span class="p">,</span> <span class="s2">&quot;C4&quot;</span><span class="p">,</span> <span class="s2">&quot;C5&quot;</span><span class="p">,</span> <span class="s2">&quot;C6&quot;</span><span class="p">,</span> <span class="s2">&quot;CP1&quot;</span><span class="p">,</span> <span class="s2">&quot;CP2&quot;</span><span class="p">,</span> <span class="s2">&quot;CP3&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;CP4&quot;</span><span class="p">,</span> <span class="s2">&quot;CP5&quot;</span><span class="p">,</span> <span class="s2">&quot;CP6&quot;</span><span class="p">,</span> <span class="s2">&quot;Cz&quot;</span><span class="p">,</span> <span class="s2">&quot;F1&quot;</span><span class="p">,</span> <span class="s2">&quot;F2&quot;</span><span class="p">,</span> <span class="s2">&quot;F3&quot;</span><span class="p">,</span> <span class="s2">&quot;F4&quot;</span><span class="p">,</span> <span class="s2">&quot;F5&quot;</span><span class="p">,</span> <span class="s2">&quot;F6&quot;</span><span class="p">,</span> <span class="s2">&quot;F7&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;F8&quot;</span><span class="p">,</span> <span class="s2">&quot;FC1&quot;</span><span class="p">,</span> <span class="s2">&quot;FC2&quot;</span><span class="p">,</span> <span class="s2">&quot;FC3&quot;</span><span class="p">,</span> <span class="s2">&quot;FC4&quot;</span><span class="p">,</span> <span class="s2">&quot;FC5&quot;</span><span class="p">,</span> <span class="s2">&quot;FC6&quot;</span><span class="p">,</span> <span class="s2">&quot;Fp1&quot;</span><span class="p">,</span> <span class="s2">&quot;Fp2&quot;</span><span class="p">,</span> <span class="s2">&quot;Fz&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;O1&quot;</span><span class="p">,</span> <span class="s2">&quot;O2&quot;</span><span class="p">,</span> <span class="s2">&quot;P1&quot;</span><span class="p">,</span> <span class="s2">&quot;P2&quot;</span><span class="p">,</span> <span class="s2">&quot;P3&quot;</span><span class="p">,</span> <span class="s2">&quot;P4&quot;</span><span class="p">,</span> <span class="s2">&quot;P5&quot;</span><span class="p">,</span> <span class="s2">&quot;P6&quot;</span><span class="p">,</span> <span class="s2">&quot;P7&quot;</span><span class="p">,</span> <span class="s2">&quot;P8&quot;</span><span class="p">,</span> <span class="s2">&quot;PO3&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;PO4&quot;</span><span class="p">,</span> <span class="s2">&quot;PO5&quot;</span><span class="p">,</span> <span class="s2">&quot;PO6&quot;</span><span class="p">,</span> <span class="s2">&quot;PO7&quot;</span><span class="p">,</span> <span class="s2">&quot;PO8&quot;</span><span class="p">,</span> <span class="s2">&quot;Pz&quot;</span><span class="p">,</span> <span class="s2">&quot;T7&quot;</span><span class="p">,</span> <span class="s2">&quot;T8&quot;</span><span class="p">,</span> <span class="s2">&quot;TP7&quot;</span><span class="p">,</span> <span class="s2">&quot;TP8&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+
+<span class="n">eeg_template_montage</span> <span class="o">=</span> <span class="n">mne</span><span class="o">.</span><span class="n">channels</span><span class="o">.</span><span class="n">make_standard_montage</span><span class="p">(</span><span class="s2">&quot;standard_1005&quot;</span><span class="p">)</span>
+<span class="n">eeg_template_montage</span><span class="o">.</span><span class="n">rename_channels</span><span class="p">({</span><span class="s2">&quot;FFT7h&quot;</span><span class="p">:</span> <span class="s2">&quot;FFC7h&quot;</span><span class="p">,</span> <span class="s2">&quot;FFT8h&quot;</span><span class="p">:</span> <span class="s2">&quot;FFC8h&quot;</span><span class="p">})</span>
+
+<span class="n">l_freq</span> <span class="o">=</span> <span class="mf">0.1</span>
+<span class="n">h_freq</span> <span class="o">=</span> <span class="mi">49</span>
+
+<span class="n">eeg_reference</span> <span class="o">=</span> <span class="p">[]</span>
+
+<span class="n">find_breaks</span> <span class="o">=</span> <span class="kc">False</span>
+
+<span class="n">n_proj_eog</span> <span class="o">=</span> <span class="mi">1</span>
+
+<span class="n">ssp_reject_eog</span> <span class="o">=</span> <span class="s2">&quot;autoreject_global&quot;</span>
+
+<span class="n">reject</span> <span class="o">=</span> <span class="kc">None</span>
+
+<span class="n">on_error</span> <span class="o">=</span> <span class="s2">&quot;abort&quot;</span>
+<span class="n">on_rename_missing_events</span> <span class="o">=</span> <span class="s2">&quot;warn&quot;</span>
+
+<span class="n">N_JOBS</span> <span class="o">=</span> <span class="mi">30</span>
+
+<span class="n">epochs_tmin</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">epochs_tmax</span> <span class="o">=</span> <span class="mi">10</span>
+<span class="n">baseline</span> <span class="o">=</span> <span class="kc">None</span>
+
+<span class="n">run_source_estimation</span> <span class="o">=</span> <span class="kc">True</span>
+<span class="n">use_template_mri</span> <span class="o">=</span> <span class="kc">True</span>
+
+<span class="n">rename_events</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;artefacto&quot;</span><span class="p">:</span> <span class="s2">&quot;artefact&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;discontinuity&quot;</span><span class="p">:</span> <span class="s2">&quot;discontinuity&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;electrodes artifacts&quot;</span><span class="p">:</span> <span class="s2">&quot;artefact&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;eyes closed&quot;</span><span class="p">:</span> <span class="s2">&quot;eyes/closed&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;eyes opened&quot;</span><span class="p">:</span> <span class="s2">&quot;eyes/open&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;fotoestimulacion&quot;</span><span class="p">:</span> <span class="s2">&quot;photic_stimulation&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;hiperventilacion 1&quot;</span><span class="p">:</span> <span class="s2">&quot;hyperventilation/1&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;hiperventilacion 2&quot;</span><span class="p">:</span> <span class="s2">&quot;hyperventilation/2&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;hiperventilacion 3&quot;</span><span class="p">:</span> <span class="s2">&quot;hyperventilation/3&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;hyperventilation 1&quot;</span><span class="p">:</span> <span class="s2">&quot;hyperventilation/1&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;hyperventilation 2&quot;</span><span class="p">:</span> <span class="s2">&quot;hyperventilation/2&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;hyperventilation 3&quot;</span><span class="p">:</span> <span class="s2">&quot;hyperventilation/3&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;ojos abiertos&quot;</span><span class="p">:</span> <span class="s2">&quot;eyes/open&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;ojos cerrados&quot;</span><span class="p">:</span> <span class="s2">&quot;eyes/closed&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;photic stimulation&quot;</span><span class="p">:</span> <span class="s2">&quot;photic_stimulation&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;recuperacion&quot;</span><span class="p">:</span> <span class="s2">&quot;recovery&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;recuperation&quot;</span><span class="p">:</span> <span class="s2">&quot;recovery&quot;</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="n">conditions</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;eyes/open&quot;</span><span class="p">,</span> <span class="s2">&quot;eyes/closed&quot;</span><span class="p">]</span>
+
+<span class="n">event_repeated</span> <span class="o">=</span> <span class="s2">&quot;drop&quot;</span>
+<span class="n">l_trans_bandwidth</span> <span class="o">=</span> <span class="s2">&quot;auto&quot;</span>
+
+<span class="n">h_trans_bandwidth</span> <span class="o">=</span> <span class="s2">&quot;auto&quot;</span>
+
+
+<span class="n">random_state</span> <span class="o">=</span> <span class="mi">42</span>
+
+<span class="n">shortest_event</span> <span class="o">=</span> <span class="mi">1</span>
+
+<span class="n">log_level</span> <span class="o">=</span> <span class="s2">&quot;info&quot;</span>
+
+<span class="n">mne_log_level</span> <span class="o">=</span> <span class="s2">&quot;error&quot;</span>
+
+<span class="c1"># on_error = &#39;continue&#39;</span>
+<span class="n">on_error</span> <span class="o">=</span> <span class="s2">&quot;continue&quot;</span>
 </pre></div>
 </body>
 </html>
@@ -473,47 +548,79 @@ body .il { color: #666666 } /* Literal.Number.Integer.Long */
 <body>
 <h2></h2>
 
-<div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">os</span>
-<span class="kn">import</span> <span class="nn">pathlib</span>
-<span class="kn">import</span> <span class="nn">urllib.request</span>
-<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pathlib</span> <span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">import</span> <span class="nn">mne</span>
 
+<span class="n">study_name</span> <span class="o">=</span> <span class="s2">&quot;age-prediction-benchmark&quot;</span>
 
-<span class="n">DEBUG</span> <span class="o">=</span> <span class="kc">False</span>
-<span class="n">url_lemon</span> <span class="o">=</span> <span class="p">(</span><span class="s1">&#39;https://ftp.gwdg.de/pub/misc/MPI-Leipzig_Mind-Brain-Body-LEMON&#39;</span>
-             <span class="s1">&#39;/EEG_MPILMBB_LEMON/EEG_Raw_BIDS_ID/&#39;</span><span class="p">)</span>
+<span class="c1"># On drago</span>
+<span class="n">N_JOBS</span> <span class="o">=</span> <span class="mi">80</span>
+<span class="n">bids_root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/storage/store3/data/LEMON_EEG_BIDS&quot;</span><span class="p">)</span>
+<span class="c1"># deriv_root = Path(&quot;/storage/store3/derivatives/LEMON_EEG_BIDS/&quot;)</span>
+<span class="n">deriv_root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/storage/store3/derivatives/LEMON_EEG_BIDS_2/&quot;</span><span class="p">)</span>
+<span class="n">subjects_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s1">&#39;/storage/store/data/camcan-mne/freesurfer&#39;</span><span class="p">)</span>
 
-<span class="n">lemon_info</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span>
-  <span class="s2">&quot;./META_File_IDs_Age_Gender_Education_Drug_Smoke_SKID_LEMON.csv&quot;</span><span class="p">)</span>
+<span class="n">source_info_path_update</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;processing&#39;</span><span class="p">:</span> <span class="s1">&#39;autoreject&#39;</span><span class="p">,</span>
+                           <span class="s1">&#39;suffix&#39;</span><span class="p">:</span> <span class="s1">&#39;epo&#39;</span><span class="p">}</span>
 
-<span class="n">data_path</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/storage/store3/data/LEMON_RAW&quot;</span><span class="p">)</span>
+<span class="n">inverse_targets</span> <span class="o">=</span> <span class="p">[]</span>
 
-<span class="k">if</span> <span class="ow">not</span> <span class="n">data_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
-    <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">data_path</span><span class="p">)</span>
+<span class="n">noise_cov</span> <span class="o">=</span> <span class="s1">&#39;ad-hoc&#39;</span>
 
-<span class="n">subjects</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">lemon_info</span><span class="o">.</span><span class="n">ID</span><span class="p">)</span>
-<span class="k">if</span> <span class="n">DEBUG</span><span class="p">:</span>
-    <span class="n">subjects</span> <span class="o">=</span> <span class="n">subjects</span><span class="p">[:</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">task</span> <span class="o">=</span> <span class="s2">&quot;RSEEG&quot;</span>
 
-<span class="n">extensions</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;eeg&quot;</span><span class="p">,</span> <span class="s2">&quot;vhdr&quot;</span><span class="p">,</span> <span class="s2">&quot;vmrk&quot;</span><span class="p">]</span>
-<span class="n">good_subjects</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+<span class="n">sessions</span> <span class="o">=</span> <span class="p">[]</span>  <span class="c1"># keep empty for code flow</span>
+<span class="n">data_type</span> <span class="o">=</span> <span class="s2">&quot;eeg&quot;</span>
+<span class="n">ch_types</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;eeg&quot;</span><span class="p">]</span>
 
-<span class="k">for</span> <span class="n">sub</span> <span class="ow">in</span> <span class="n">subjects</span><span class="p">:</span>
-    <span class="k">for</span> <span class="n">ext</span> <span class="ow">in</span> <span class="n">extensions</span><span class="p">:</span>
-        <span class="n">sub_url</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">sub</span><span class="si">}</span><span class="s2">/RSEEG/</span><span class="si">{</span><span class="n">sub</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">ext</span><span class="si">}</span><span class="s2">&quot;</span>
-        <span class="n">url</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">url_lemon</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">sub_url</span><span class="si">}</span><span class="s2">&quot;</span>
-        <span class="n">out_path</span> <span class="o">=</span> <span class="n">data_path</span> <span class="o">/</span> <span class="n">sub</span> <span class="o">/</span> <span class="s2">&quot;RSEEG&quot;</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">out_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
-            <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">out_path</span><span class="p">)</span>
-        <span class="n">out_name</span> <span class="o">=</span> <span class="n">out_path</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">sub</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">ext</span><span class="si">}</span><span class="s2">&quot;</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">urllib</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">urlretrieve</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">out_name</span><span class="p">)</span>
-            <span class="n">good_subjects</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">sub</span><span class="p">)</span>
-        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+<span class="n">analyze_channels</span> <span class="o">=</span> <span class="p">[</span>
+  <span class="s1">&#39;Fp1&#39;</span><span class="p">,</span> <span class="s1">&#39;Fp2&#39;</span><span class="p">,</span> <span class="s1">&#39;F7&#39;</span><span class="p">,</span> <span class="s1">&#39;F3&#39;</span><span class="p">,</span> <span class="s1">&#39;Fz&#39;</span><span class="p">,</span> <span class="s1">&#39;F4&#39;</span><span class="p">,</span> <span class="s1">&#39;F8&#39;</span><span class="p">,</span> <span class="s1">&#39;FC5&#39;</span><span class="p">,</span> <span class="s1">&#39;FC1&#39;</span><span class="p">,</span> <span class="s1">&#39;FC2&#39;</span><span class="p">,</span> <span class="s1">&#39;FC6&#39;</span><span class="p">,</span>
+  <span class="s1">&#39;T7&#39;</span><span class="p">,</span> <span class="s1">&#39;C3&#39;</span><span class="p">,</span> <span class="s1">&#39;Cz&#39;</span><span class="p">,</span> <span class="s1">&#39;C4&#39;</span><span class="p">,</span> <span class="s1">&#39;T8&#39;</span><span class="p">,</span> <span class="s1">&#39;CP5&#39;</span><span class="p">,</span> <span class="s1">&#39;CP1&#39;</span><span class="p">,</span> <span class="s1">&#39;CP2&#39;</span><span class="p">,</span> <span class="s1">&#39;CP6&#39;</span><span class="p">,</span> <span class="s1">&#39;AFz&#39;</span><span class="p">,</span>
+  <span class="s1">&#39;P7&#39;</span><span class="p">,</span> <span class="s1">&#39;P3&#39;</span><span class="p">,</span> <span class="s1">&#39;Pz&#39;</span><span class="p">,</span> <span class="s1">&#39;P4&#39;</span><span class="p">,</span> <span class="s1">&#39;P8&#39;</span><span class="p">,</span> <span class="s1">&#39;PO9&#39;</span><span class="p">,</span> <span class="s1">&#39;O1&#39;</span><span class="p">,</span> <span class="s1">&#39;Oz&#39;</span><span class="p">,</span> <span class="s1">&#39;O2&#39;</span><span class="p">,</span> <span class="s1">&#39;PO10&#39;</span><span class="p">,</span> <span class="s1">&#39;AF7&#39;</span><span class="p">,</span>
+  <span class="s1">&#39;AF3&#39;</span><span class="p">,</span> <span class="s1">&#39;AF4&#39;</span><span class="p">,</span> <span class="s1">&#39;AF8&#39;</span><span class="p">,</span> <span class="s1">&#39;F5&#39;</span><span class="p">,</span> <span class="s1">&#39;F1&#39;</span><span class="p">,</span> <span class="s1">&#39;F2&#39;</span><span class="p">,</span> <span class="s1">&#39;F6&#39;</span><span class="p">,</span> <span class="s1">&#39;FT7&#39;</span><span class="p">,</span> <span class="s1">&#39;FC3&#39;</span><span class="p">,</span> <span class="s1">&#39;FC4&#39;</span><span class="p">,</span> <span class="s1">&#39;FT8&#39;</span><span class="p">,</span>
+  <span class="s1">&#39;C5&#39;</span><span class="p">,</span> <span class="s1">&#39;C1&#39;</span><span class="p">,</span> <span class="s1">&#39;C2&#39;</span><span class="p">,</span> <span class="s1">&#39;C6&#39;</span><span class="p">,</span> <span class="s1">&#39;TP7&#39;</span><span class="p">,</span> <span class="s1">&#39;CP3&#39;</span><span class="p">,</span> <span class="s1">&#39;CPz&#39;</span><span class="p">,</span> <span class="s1">&#39;CP4&#39;</span><span class="p">,</span> <span class="s1">&#39;TP8&#39;</span><span class="p">,</span> <span class="s1">&#39;P5&#39;</span><span class="p">,</span> <span class="s1">&#39;P1&#39;</span><span class="p">,</span> <span class="s1">&#39;P2&#39;</span><span class="p">,</span>
+  <span class="s1">&#39;P6&#39;</span><span class="p">,</span> <span class="s1">&#39;PO7&#39;</span><span class="p">,</span> <span class="s1">&#39;PO3&#39;</span><span class="p">,</span> <span class="s1">&#39;POz&#39;</span><span class="p">,</span> <span class="s1">&#39;PO4&#39;</span><span class="p">,</span> <span class="s1">&#39;PO8&#39;</span><span class="p">]</span>
 
-<span class="n">good_subs_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="n">subject</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">good_subjects</span><span class="p">))))</span>
-<span class="n">good_subs_df</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="s1">&#39;good_subjects.csv&#39;</span><span class="p">)</span>
+<span class="n">eeg_template_montage</span> <span class="o">=</span> <span class="n">mne</span><span class="o">.</span><span class="n">channels</span><span class="o">.</span><span class="n">make_standard_montage</span><span class="p">(</span><span class="s2">&quot;standard_1005&quot;</span><span class="p">)</span>
+
+<span class="n">l_freq</span> <span class="o">=</span> <span class="mf">0.1</span>
+<span class="n">h_freq</span> <span class="o">=</span> <span class="mi">49</span>
+<span class="n">resample_sfreq</span> <span class="o">=</span> <span class="mi">200</span>
+<span class="c1"># decim = 5 # LEMON has 1000 Hz; Cuban Human Brain Project 200Hz</span>
+
+<span class="n">eeg_reference</span> <span class="o">=</span> <span class="p">[]</span>
+
+<span class="n">eog_channels</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;Fp1&quot;</span><span class="p">]</span>
+
+<span class="n">find_breaks</span> <span class="o">=</span> <span class="kc">False</span>
+
+<span class="n">n_proj_eog</span> <span class="o">=</span> <span class="mi">1</span>
+
+<span class="n">reject</span> <span class="o">=</span> <span class="kc">None</span>
+
+<span class="n">on_rename_missing_events</span> <span class="o">=</span> <span class="s2">&quot;warn&quot;</span>
+
+<span class="n">epochs_tmin</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">epochs_tmax</span> <span class="o">=</span> <span class="mi">10</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">resample_sfreq</span>
+<span class="n">baseline</span> <span class="o">=</span> <span class="kc">None</span>
+
+<span class="n">run_source_estimation</span> <span class="o">=</span> <span class="kc">True</span>
+<span class="n">use_template_mri</span> <span class="o">=</span> <span class="kc">True</span>
+
+<span class="n">conditions</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;eyes/open&quot;</span><span class="p">,</span> <span class="s2">&quot;eyes/closed&quot;</span><span class="p">]</span>
+
+<span class="n">event_repeated</span> <span class="o">=</span> <span class="s2">&quot;drop&quot;</span>
+<span class="n">l_trans_bandwidth</span> <span class="o">=</span> <span class="s2">&quot;auto&quot;</span>
+<span class="n">h_trans_bandwidth</span> <span class="o">=</span> <span class="s2">&quot;auto&quot;</span>
+
+<span class="n">random_state</span> <span class="o">=</span> <span class="mi">42</span>
+
+<span class="n">shortest_event</span> <span class="o">=</span> <span class="mi">1</span>
+
+<span class="n">log_level</span> <span class="o">=</span> <span class="s2">&quot;info&quot;</span>
+
+<span class="n">mne_log_level</span> <span class="o">=</span> <span class="s2">&quot;error&quot;</span>
+<span class="n">on_error</span> <span class="o">=</span> <span class="s2">&quot;continue&quot;</span>
 </pre></div>
 </body>
 </html>
@@ -712,7 +819,7 @@ body .il { color: #666666 } /* Literal.Number.Integer.Long */
 
 </div>
 
-<p><em>Last updated: 2022-04-24 18:30</em></p>
+<p><em>Last updated: 2022-05-05 22:25</em></p>
 <p>
     <strong>4</strong> benchmarks in total.
 </p>

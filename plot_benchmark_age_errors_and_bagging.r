@@ -173,6 +173,5 @@ bag_plot <- ggplot(data = dt_scores_bagged, mapping = aes(x = R2, y = dataset, c
 
 fig_ba_plot_final <- ba_plot | bag_plot
 
-
 my_ggsave('./figures/fig_ba_plot_bagging', plot = fig_ba_plot_final, dpi = 300, 
           width = 10, height = 5)

@@ -56,7 +56,7 @@ fig <- ggplot(
   theme_minimal(base_size = 22) +
   scale_color_solarized() +
   scale_fill_solarized() +
-  labs(x = "Age [years]", y = "Density") +
+  labs(x = "Age [years]", y = "Estimated Density") +
   geom_text(x = 70, y = 0.026,
             size = 6,
             inherit.aes = F,

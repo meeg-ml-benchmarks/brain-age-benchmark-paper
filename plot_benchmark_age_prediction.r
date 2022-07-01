@@ -80,6 +80,8 @@ agg_cv$r2sd <- aggregate(r2 ~ benchmark + dataset,
                          data = results_out, FUN = sd)$r2
 
 write.csv(agg_cv, './results_agg_cv.csv')
+agg_cv2 <- aggregate(r2 ~ benchmark + dataset, data = results_out, FUN = median)
+write.csv(agg_cv2, './results_agg_cv2.csv')
 
 names(agg_cv)[3:4] <- c(expression(R^2(M)), expression(R^2(SD)))
 agg_cv$MAE <- aggregate(MAE ~ benchmark + dataset,

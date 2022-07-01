@@ -75,7 +75,7 @@ agg_cv$benchmark <- factor(
   labels = c('deep', 'shallow', 'filterbank\nsource', 'filterbank\nriemann',
              'handcrafted','dummy'))
 
-agg_cv$label <- paste0("R^2%==%", round(agg_cv$R.2.M., 2))
+agg_cv$label <- paste0("R^2%==%", round(agg_cv$r2, 2))
 
 fig_scat1 <- ggplot(data = subset(results, benchmark != 'dummy'), mapping = aes(
     x = y_true, y = y_pred, color = benchmark, fill = benchmark
@@ -95,28 +95,15 @@ fig_scat1 <- ggplot(data = subset(results, benchmark != 'dummy'), mapping = aes(
 my_ggsave('./figures/fig_performance_scatter', plot = fig_scat1, dpi = 300, 
           width = 8, height = 7)
 
-fig_scat2 <- ggplot(data = subset(results, benchmark != 'dummy'), mapping = aes(
-    x = y_true, y = y_true - y_pred, color = benchmark, fill = benchmark
-)) +
-    geom_point(show.legend = F, size = 0.3) +
-    facet_grid(dataset ~ benchmark) +
-    coord_cartesian(ylim = c(-70, 70), xlim = c(0, 100)) +
-    theme_minimal(base_size = 16) +
-    scale_color_manual(values = color_values) +
-    labs(x = 'Age [years]', y = 'Age - Brain Age [years]')
-
-my_ggsave('./figures/fig_performance_brain_age_error_scatter', plot = fig_scat2, dpi = 300, 
-          width = 8, height = 7)
-
 dt_results <- data.table(results)
 
 dt_results <- dt_results[benchmark != 'dummy']
 dt_results$benchmark <- factor(dt_results$benchmark)
 split_list <- split(dt_results, dt_results$benchmark)
-
 dt_ba <- do.call(cbind, lapply(split_list, function(dt) {
     dt$y_pred
 }))
+
 dt_ba <- data.table(dt_ba)
 dt_ba$dataset <- split_list[[1]]$dataset
 dt_ba$model_mean1 <- rowMeans(dt_ba[, names(split_list), with = F])
@@ -153,9 +140,17 @@ dt_scores_bagged <- dt_results_bagged[
     .(cv_split, dataset)]
 
 
-best_mods <- rbindlist(lapply(split(agg_cv, agg_cv$dataset), function(x) {
-    idx <- which.max(x[['R.2.M.']])
-    best_score <- x[['R.2.M.']][idx]
+agg_cv2 <- read.csv('./results_agg_cv2.csv')
+agg_cv2$benchmark <- factor(
+  agg_cv2$benchmark,
+  levels = c('deep', 'shallow', 'filterbank-source', 'filterbank-riemann',
+             'handcrafted','dummy'),
+  labels = c('deep', 'shallow', 'filterbank\nsource', 'filterbank\nriemann',
+             'handcrafted','dummy'))
+
+best_mods <- rbindlist(lapply(split(agg_cv2, agg_cv2$dataset), function(x) {
+    idx <- which.max(x[['r2']])
+    best_score <- x[['r2']][idx]
     best_model <- x[['benchmark']][idx]
     data.table(score = best_score, model = best_model, dataset = x$dataset)
 }))

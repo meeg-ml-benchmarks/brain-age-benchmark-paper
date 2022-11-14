@@ -1,8 +1,9 @@
 # M/EEG brain age prediction benchmark paper
 
-This repository presents the code, tools and resources developed in the course of [1]. To reuse the code, please follow the instructions and recommendations below.
+This repository presents the code, tools and resources developed in the course of [1]. To reuse the code, please follow the instructions and recommendations below. When publishing results based on this code, please cite [1]
 
-[1] D. Engemann, A. Mellot, R. Höchenberger, H. Banville, D. Sabbagh, L. Gemein, T. Ball, and A. Gramfort. A reusable benchmark of brain-age prediction from M/EEG resting-state signals (2022). NeuroImage (262) 15. https://doi.org/10.1016/j.neuroimage.2022.119521
+[1] D. Engemann, A. Mellot, R. Höchenberger, H. Banville, D. Sabbagh, L. Gemein, T. Ball, and A. Gramfort. A reusable benchmark of brain-age prediction from M/EEG resting-state signals (2022). NeuroImage 262 (119521): 119521. https://doi.org/10.1016/j.neuroimage.2022.119521
+
 ---
 
 ## Exploring the aggregated results using the plotting scripts

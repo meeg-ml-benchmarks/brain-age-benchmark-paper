@@ -2,8 +2,7 @@
 
 This repository presents the code, tools and resources developed in the course of [1]. To reuse the code, please follow the instructions and recommendations below.
 
-[1] D. Engemann, A. Mellot, R. Höchenberger, H. Banville, D. Sabbagh, L. Gemein, T. Ball, and A. Gramfort. A reusable benchmark of brain-age prediction from M/EEG resting-state signals (in preparation).
-
+[1] D. Engemann, A. Mellot, R. Höchenberger, H. Banville, D. Sabbagh, L. Gemein, T. Ball, and A. Gramfort. A reusable benchmark of brain-age prediction from M/EEG resting-state signals (2022). NeuroImage (262) 15. https://doi.org/10.1016/j.neuroimage.2022.119521
 ---
 
 ## Exploring the aggregated results using the plotting scripts

@@ -1,15 +1,14 @@
-from sys import path
-from pathlib import Path
+# from sys import path
+# from pathlib import Path
 import mne
 
 study_name = "age-prediction-benchmark"
 
 # On drago
-N_JOBS = 80
-bids_root = Path("/storage/store2/data/TUAB-healthy-bids-bv")
-#deriv_root = Path("/storage/store3/derivatives/TUAB-healthy-bids2")
-deriv_root = Path("/storage/store3/derivatives/TUAB-healthy-bids3")
-subjects_dir = Path('/storage/store/data/camcan-mne/freesurfer')
+n_jobs = 80
+bids_root = "/storage/store2/data/TUAB-healthy-bids-bv"
+deriv_root = "/storage/store3/derivatives/TUAB-healthy-bids3"
+subjects_dir = "/storage/store/data/camcan-mne/freesurfer"
 
 source_info_path_update = {'processing': 'autoreject',
                            'suffix': 'epo'}
@@ -41,7 +40,7 @@ ch_types = ["eeg"]
 
 l_freq = 0.1
 h_freq = 49
-resample_sfreq = 200
+raw_resample_sfreq = 200
 
 find_breaks = False
 
@@ -54,8 +53,8 @@ on_rename_missing_events = "warn"
 
 
 epochs_tmin = 0
-epochs_tmax = 10 - 1 / resample_sfreq
-rest_epochs_duration = 10. - 1 / resample_sfreq
+epochs_tmax = 10 - 1 / raw_resample_sfreq
+rest_epochs_duration = 10. - 1 / raw_resample_sfreq
 rest_epochs_overlap = 0.
 baseline = None
 
